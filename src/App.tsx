@@ -1,4 +1,3 @@
-import React from 'react';
 import { Trophy, Users, RefreshCw, Trash2, Calendar } from 'lucide-react';
 import { useTournament } from './hooks/useTournament';
 import { PlayerList } from './components/PlayerList';

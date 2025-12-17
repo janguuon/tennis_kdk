@@ -1,6 +1,6 @@
 import { Player, Match } from '../types';
 
-export const generateKDKMatches = (players: Player[], courts: number = 1): Match[] => {
+export const generateKDKMatches = (players: Player[], _courts: number = 1): Match[] => {
   const activePlayers = players.filter(p => p.active);
   const playerCount = activePlayers.length;
   

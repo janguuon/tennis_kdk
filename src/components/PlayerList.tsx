@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Player } from '../types';
-import { UserPlus, UserMinus, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react';
+import { UserPlus, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react';
 
 interface PlayerListProps {
   players: Player[];
