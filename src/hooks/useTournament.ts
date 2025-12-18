@@ -8,18 +8,28 @@ interface TournamentState {
   players: Player[];
   matches: Match[];
   courts: number;
+  rounds: number;
+  mixedDoubles: boolean;
 }
 
 export const useTournament = () => {
   const [state, setState] = useState<TournamentState>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      // Ensure backward compatibility
+      return {
+        ...parsed,
+        rounds: parsed.rounds || 4,
+        mixedDoubles: parsed.mixedDoubles || false
+      };
     }
     return {
       players: [],
       matches: [],
-      courts: 1
+      courts: 1,
+      rounds: 4,
+      mixedDoubles: false
     };
   });
 
@@ -27,10 +37,11 @@ export const useTournament = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
-  const addPlayer = (name: string) => {
+  const addPlayer = (name: string, gender: 'M' | 'F' = 'M') => {
     const newPlayer: Player = {
       id: crypto.randomUUID(),
       name,
+      gender,
       active: true
     };
     setState(prev => ({ ...prev, players: [...prev.players, newPlayer] }));
@@ -52,8 +63,16 @@ export const useTournament = () => {
     }));
   };
 
+  const setRounds = (rounds: number) => {
+    setState(prev => ({ ...prev, rounds }));
+  };
+
+  const setMixedDoubles = (mixedDoubles: boolean) => {
+    setState(prev => ({ ...prev, mixedDoubles }));
+  };
+
   const generateMatches = () => {
-    const newMatches = generateKDKMatches(state.players, state.courts);
+    const newMatches = generateKDKMatches(state.players, state.courts, state.rounds, state.mixedDoubles);
     setState(prev => ({ ...prev, matches: newMatches }));
   };
 
@@ -77,7 +96,9 @@ export const useTournament = () => {
         setState({
             players: [],
             matches: [],
-            courts: 1
+            courts: 1,
+            rounds: 4,
+            mixedDoubles: false
         });
       }
   }
@@ -139,6 +160,10 @@ export const useTournament = () => {
     generateMatches,
     updateScore,
     resetTournament,
-    clearAllData
+    clearAllData,
+    rounds: state.rounds,
+    setRounds,
+    mixedDoubles: state.mixedDoubles,
+    setMixedDoubles
   };
 };

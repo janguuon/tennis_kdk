@@ -1,23 +1,47 @@
 import { Player, Match } from '../types';
 
-export const generateKDKMatches = (players: Player[], _courts: number = 1): Match[] => {
+export const generateKDKMatches = (players: Player[], _courts: number = 1, targetRounds: number = 4, mixedDoubles: boolean = false): Match[] => {
   const activePlayers = players.filter(p => p.active);
   const playerCount = activePlayers.length;
   
   // Basic validation
   if (playerCount < 4) return [];
 
-  const rounds = 4; // Standard KDK usually has 4 games per person
-  
-  if (playerCount === 8) {
-    return generate8PlayerSchedule(activePlayers);
-  } else if (playerCount === 12) {
-    return generate12PlayerSchedule(activePlayers);
-  } else if (playerCount === 16) {
-    return generate16PlayerSchedule(activePlayers);
-  } else {
-    return generateGenericSchedule(activePlayers, rounds);
+  let matches: Match[] = [];
+
+  if (mixedDoubles) {
+    // Mixed doubles mode: Skip fixed patterns and use specialized generation
+    return generateMixedDoublesSchedule(activePlayers, targetRounds);
   }
+  
+  // Check if we have a fixed pattern for this number of players
+  if (playerCount === 8 || playerCount === 12 || playerCount === 16) {
+    let fixedMatches: Match[] = [];
+    
+    if (playerCount === 8) {
+      fixedMatches = generate8PlayerSchedule(activePlayers);
+    } else if (playerCount === 12) {
+      fixedMatches = generate12PlayerSchedule(activePlayers);
+    } else if (playerCount === 16) {
+      fixedMatches = generate16PlayerSchedule(activePlayers);
+    }
+
+    if (targetRounds <= 4) {
+      // If requested rounds are less than or equal to 4, just slice the fixed schedule
+      matches = fixedMatches.filter(m => m.round <= targetRounds);
+    } else {
+      // If requested rounds > 4, keep the fixed schedule and add generic rounds
+      matches = [...fixedMatches];
+      const extraRounds = targetRounds - 4;
+      const genericMatches = generateGenericSchedule(activePlayers, extraRounds, 5); // Start from round 5
+      matches = [...matches, ...genericMatches];
+    }
+  } else {
+    // For other player counts, use generic schedule for all rounds
+    matches = generateGenericSchedule(activePlayers, targetRounds);
+  }
+
+  return matches;
 };
 
 const createMatchesFromIndices = (players: Player[], scheduleIndices: number[][][]): Match[] => {
@@ -56,7 +80,6 @@ const generate8PlayerSchedule = (players: Player[]): Match[] => {
 
 const generate12PlayerSchedule = (players: Player[]): Match[] => {
   // 12 Players, 3 Courts, 4 Rounds
-  // Optimized to ensure unique partners for everyone as much as possible
   const scheduleIndices = [
     // Round 1
     [[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8, 9], [10, 11]],
@@ -87,7 +110,71 @@ const generate16PlayerSchedule = (players: Player[]): Match[] => {
   return createMatchesFromIndices(players, scheduleIndices);
 };
 
-const generateGenericSchedule = (players: Player[], rounds: number): Match[] => {
+const generateMixedDoublesSchedule = (players: Player[], rounds: number, startRound: number = 1): Match[] => {
+  const matches: Match[] = [];
+  const matchesPerRound = Math.floor(players.length / 4);
+  
+  const playCounts: Record<string, number> = {};
+  players.forEach(p => playCounts[p.id] = 0);
+
+  for (let r = 0; r < rounds; r++) {
+    const currentRound = startRound + r;
+
+    // 1. Sort and Separate
+    const men = players.filter(p => p.gender === 'M' || !p.gender)
+      .map(value => ({ value, sort: Math.random() }))
+      .sort((a, b) => a.sort - b.sort)
+      .map(({ value }) => value)
+      .sort((a, b) => playCounts[a.id] - playCounts[b.id]);
+
+    const women = players.filter(p => p.gender === 'F')
+      .map(value => ({ value, sort: Math.random() }))
+      .sort((a, b) => a.sort - b.sort)
+      .map(({ value }) => value)
+      .sort((a, b) => playCounts[a.id] - playCounts[b.id]);
+
+    const roundMatches: Player[][] = [];
+
+    // 2. Form Mixed Doubles (M, F) vs (M, F)
+    let mIdx = 0;
+    let wIdx = 0;
+    
+    while (mIdx + 1 < men.length && wIdx + 1 < women.length) {
+      if (roundMatches.length >= matchesPerRound) break;
+      roundMatches.push([men[mIdx++], women[wIdx++], men[mIdx++], women[wIdx++]]);
+    }
+
+    // 3. Form remaining matches with leftovers
+    const leftovers = [
+      ...men.slice(mIdx),
+      ...women.slice(wIdx)
+    ];
+
+    let lIdx = 0;
+    while (roundMatches.length < matchesPerRound && lIdx + 3 < leftovers.length) {
+       roundMatches.push([leftovers[lIdx++], leftovers[lIdx++], leftovers[lIdx++], leftovers[lIdx++]]);
+    }
+
+    // 4. Convert to Match objects
+    roundMatches.forEach((teamPlayers, m) => {
+      matches.push({
+        id: `match-mixed-${currentRound}-${m}`,
+        round: currentRound,
+        courtNumber: m + 1,
+        team1: [teamPlayers[0].id, teamPlayers[1].id],
+        team2: [teamPlayers[2].id, teamPlayers[3].id],
+        score1: null,
+        score2: null,
+      });
+
+      teamPlayers.forEach(p => playCounts[p.id]++);
+    });
+  }
+
+  return matches;
+};
+
+const generateGenericSchedule = (players: Player[], rounds: number, startRound: number = 1): Match[] => {
   // A generic random pairing algorithm that tries to be fair.
   const matches: Match[] = [];
   const playerCount = players.length;
@@ -97,10 +184,16 @@ const generateGenericSchedule = (players: Player[], rounds: number): Match[] => 
   const playCounts: Record<string, number> = {};
   players.forEach(p => playCounts[p.id] = 0);
 
-  for (let r = 1; r <= rounds; r++) {
+  for (let r = 0; r < rounds; r++) {
+    const currentRound = startRound + r;
+    
     // Sort players by play count to give priority to those who played less
-    // For random generation, we shuffle first then sort stable
-    const availablePlayers = [...players].sort(() => Math.random() - 0.5);
+    // Shuffle first for randomness in tie-breaking, then sort by play counts
+    const availablePlayers = [...players]
+      .map(value => ({ value, sort: Math.random() }))
+      .sort((a, b) => a.sort - b.sort)
+      .map(({ value }) => value)
+      .sort((a, b) => playCounts[a.id] - playCounts[b.id]);
     
     // Create matches
     let playerIdx = 0;
@@ -113,8 +206,8 @@ const generateGenericSchedule = (players: Player[], rounds: number): Match[] => 
       const p4 = availablePlayers[playerIdx++];
 
       matches.push({
-        id: `match-gen-${r}-${m}`,
-        round: r,
+        id: `match-gen-${currentRound}-${m}`,
+        round: currentRound,
         courtNumber: m + 1,
         team1: [p1.id, p2.id],
         team2: [p3.id, p4.id],

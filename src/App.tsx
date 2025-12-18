@@ -15,7 +15,11 @@ function App() {
     generateMatches,
     updateScore,
     resetTournament,
-    clearAllData
+    clearAllData,
+    rounds,
+    setRounds,
+    mixedDoubles,
+    setMixedDoubles
   } = useTournament();
 
   const hasMatches = matches.length > 0;
@@ -77,6 +81,39 @@ function App() {
                 Ready to start? Generate matches based on the active players list.
                 Make sure you have at least 4 players.
               </p>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Rounds per Player
+                </label>
+                <select
+                  value={rounds}
+                  onChange={(e) => setRounds(Number(e.target.value))}
+                  disabled={hasMatches}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+                >
+                  {[4, 5, 6, 7, 8].map(r => (
+                    <option key={r} value={r}>{r} Rounds</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Standard KDK is 4 rounds. 12/16 players have fixed patterns for 4 rounds.
+                </p>
+              </div>
+
+              <div className="mb-6 flex items-center">
+                <input
+                  type="checkbox"
+                  id="mixedDoubles"
+                  checked={mixedDoubles}
+                  onChange={(e) => setMixedDoubles(e.target.checked)}
+                  disabled={hasMatches}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
+                />
+                <label htmlFor="mixedDoubles" className={`ml-2 block text-sm font-medium ${hasMatches ? 'text-gray-400' : 'text-gray-700'}`}>
+                  Mixed Doubles Mode
+                </label>
+              </div>
               
               <button
                 onClick={generateMatches}
