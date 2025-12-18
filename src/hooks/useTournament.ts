@@ -21,6 +21,7 @@ export const useTournament = () => {
       return {
         ...parsed,
         rounds: parsed.rounds || 4,
+        courts: parsed.courts || 1,
         mixedDoubles: parsed.mixedDoubles || false
       };
     }
@@ -65,6 +66,10 @@ export const useTournament = () => {
 
   const setRounds = (rounds: number) => {
     setState(prev => ({ ...prev, rounds }));
+  };
+
+  const setCourts = (courts: number) => {
+    setState(prev => ({ ...prev, courts }));
   };
 
   const setMixedDoubles = (mixedDoubles: boolean) => {
@@ -163,6 +168,8 @@ export const useTournament = () => {
     clearAllData,
     rounds: state.rounds,
     setRounds,
+    courts: state.courts,
+    setCourts,
     mixedDoubles: state.mixedDoubles,
     setMixedDoubles
   };

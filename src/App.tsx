@@ -18,6 +18,8 @@ function App() {
     clearAllData,
     rounds,
     setRounds,
+    courts,
+    setCourts,
     mixedDoubles,
     setMixedDoubles
   } = useTournament();
@@ -82,24 +84,41 @@ function App() {
                 Make sure you have at least 4 players.
               </p>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Rounds per Player
-                </label>
-                <select
-                  value={rounds}
-                  onChange={(e) => setRounds(Number(e.target.value))}
-                  disabled={hasMatches}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
-                >
-                  {[4, 5, 6, 7, 8].map(r => (
-                    <option key={r} value={r}>{r} Rounds</option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Standard KDK is 4 rounds. 12/16 players have fixed patterns for 4 rounds.
-                </p>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Rounds
+                  </label>
+                  <select
+                    value={rounds}
+                    onChange={(e) => setRounds(Number(e.target.value))}
+                    disabled={hasMatches}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+                  >
+                    {[4, 5, 6, 7, 8].map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Courts
+                  </label>
+                  <select
+                    value={courts}
+                    onChange={(e) => setCourts(Number(e.target.value))}
+                    disabled={hasMatches}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
+              <p className="text-xs text-gray-500 mb-4 mt-[-10px]">
+                Standard KDK is 4 rounds. 12/16 players have fixed patterns for 4 rounds.
+              </p>
 
               <div className="mb-6 flex items-center">
                 <input
