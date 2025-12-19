@@ -2,6 +2,7 @@ export interface Player {
   id: string;
   name: string;
   gender: 'M' | 'F';
+  ntrp: number;
   active: boolean;
 }
 

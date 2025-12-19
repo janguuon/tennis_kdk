@@ -4,7 +4,7 @@ import { UserPlus, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react';
 
 interface PlayerListProps {
   players: Player[];
-  onAddPlayer: (name: string, gender: 'M' | 'F') => void;
+  onAddPlayer: (name: string, gender: 'M' | 'F', ntrp: number) => void;
   onRemovePlayer: (id: string) => void;
   onToggleActive: (id: string) => void;
 }
@@ -17,11 +17,12 @@ export const PlayerList: React.FC<PlayerListProps> = ({
 }) => {
   const [newName, setNewName] = useState('');
   const [gender, setGender] = useState<'M' | 'F'>('M');
+  const [ntrp, setNtrp] = useState<number>(3.0);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (newName.trim()) {
-      onAddPlayer(newName.trim(), gender);
+      onAddPlayer(newName.trim(), gender, ntrp);
       setNewName('');
     }
   };
@@ -49,6 +50,16 @@ export const PlayerList: React.FC<PlayerListProps> = ({
             <option value="M">Male</option>
             <option value="F">Female</option>
           </select>
+          <select
+            value={ntrp}
+            onChange={(e) => setNtrp(Number(e.target.value))}
+            className="px-2 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white w-20"
+            title="NTRP Level"
+          >
+            {[1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0].map(v => (
+              <option key={v} value={v}>{v.toFixed(1)}</option>
+            ))}
+          </select>
         </div>
         <button
           type="submit"
@@ -69,6 +80,9 @@ export const PlayerList: React.FC<PlayerListProps> = ({
                 {player.gender || 'M'}
               </span>
               <span className="font-medium text-gray-700">{player.name}</span>
+              <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
+                {player.ntrp ? player.ntrp.toFixed(1) : '?.?'}
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <button

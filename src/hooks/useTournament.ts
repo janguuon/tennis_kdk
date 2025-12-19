@@ -38,11 +38,12 @@ export const useTournament = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
-  const addPlayer = (name: string, gender: 'M' | 'F' = 'M') => {
+  const addPlayer = (name: string, gender: 'M' | 'F' = 'M', ntrp: number = 3.0) => {
     const newPlayer: Player = {
       id: crypto.randomUUID(),
       name,
       gender,
+      ntrp,
       active: true
     };
     setState(prev => ({ ...prev, players: [...prev.players, newPlayer] }));

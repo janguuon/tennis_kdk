@@ -44,6 +44,67 @@ export const generateKDKMatches = (players: Player[], courts: number = 1, target
   return matches;
 };
 
+const balanceTeamsNTRP = (players: Player[]): Player[] => {
+  // Ensure we have 4 players
+  if (players.length !== 4) return players;
+
+  // Helper to safely get NTRP
+  const getNTRP = (p: Player) => p.ntrp || 3.0;
+
+  // Check for 2 Men and 2 Women case (Mixed Doubles preference)
+  const men = players.filter(p => p.gender === 'M' || !p.gender);
+  const women = players.filter(p => p.gender === 'F');
+
+  if (men.length === 2 && women.length === 2) {
+    // We have 2 Men and 2 Women.
+    // We want to avoid MM vs FF.
+    // So we must pair M-F vs M-F.
+    const m1 = men[0];
+    const m2 = men[1];
+    const w1 = women[0];
+    const w2 = women[1];
+
+    // Option A: (M1, W1) vs (M2, W2)
+    const diffA = Math.abs((getNTRP(m1) + getNTRP(w1)) - (getNTRP(m2) + getNTRP(w2)));
+    
+    // Option B: (M1, W2) vs (M2, W1)
+    const diffB = Math.abs((getNTRP(m1) + getNTRP(w2)) - (getNTRP(m2) + getNTRP(w1)));
+
+    if (diffA <= diffB) {
+      return [m1, w1, m2, w2];
+    } else {
+      return [m1, w2, m2, w1];
+    }
+  }
+
+  // General Case: Try to minimize NTRP difference between Team 1 and Team 2
+  // Possible Pairings:
+  // 1. (0, 1) vs (2, 3)
+  // 2. (0, 2) vs (1, 3)
+  // 3. (0, 3) vs (1, 2)
+  
+  const p = players;
+  const combos = [
+    { 
+      teams: [p[0], p[1], p[2], p[3]], 
+      diff: Math.abs((getNTRP(p[0]) + getNTRP(p[1])) - (getNTRP(p[2]) + getNTRP(p[3]))) 
+    },
+    { 
+      teams: [p[0], p[2], p[1], p[3]], 
+      diff: Math.abs((getNTRP(p[0]) + getNTRP(p[2])) - (getNTRP(p[1]) + getNTRP(p[3]))) 
+    },
+    { 
+      teams: [p[0], p[3], p[1], p[2]], 
+      diff: Math.abs((getNTRP(p[0]) + getNTRP(p[3])) - (getNTRP(p[1]) + getNTRP(p[2]))) 
+    }
+  ];
+
+  // Sort by smallest difference
+  combos.sort((a, b) => a.diff - b.diff);
+
+  return combos[0].teams;
+};
+
 const createMatchesFromIndices = (players: Player[], scheduleIndices: number[][][], courts: number): Match[] => {
   return scheduleIndices.map((matchIds, index) => {
     const matchesPerRound = players.length / 4;
@@ -210,14 +271,8 @@ const generateGenericSchedule = (players: Player[], rounds: number, courts: numb
         availablePlayers[playerIdx++]
       ];
 
-      // Avoid MM vs FF ( 남남 vs 여여 )
-      // If we have 2 Men and 2 Women, pair them as MF vs MF
-      const menInGroup = matchPlayers.filter(p => p.gender === 'M' || !p.gender);
-      const womenInGroup = matchPlayers.filter(p => p.gender === 'F');
-
-      if (menInGroup.length === 2 && womenInGroup.length === 2) {
-        matchPlayers = [menInGroup[0], womenInGroup[0], menInGroup[1], womenInGroup[1]];
-      }
+      // Use NTRP balancing (which also handles MM vs FF avoidance)
+      matchPlayers = balanceTeamsNTRP(matchPlayers);
 
       const p1 = matchPlayers[0];
       const p2 = matchPlayers[1];
