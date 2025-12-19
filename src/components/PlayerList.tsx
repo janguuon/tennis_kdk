@@ -33,15 +33,15 @@ export const PlayerList: React.FC<PlayerListProps> = ({
         Players ({players.length})
       </h2>
       
-      <form onSubmit={handleSubmit} className="mb-6 flex gap-2">
-        <div className="flex-1 flex gap-2">
-          <input
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="Enter player name"
-            className="flex-1 px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+      <form onSubmit={handleSubmit} className="mb-6 flex flex-col sm:flex-row gap-2">
+        <input
+          type="text"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="Enter player name"
+          className="flex-1 px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <div className="flex gap-2">
           <select
             value={gender}
             onChange={(e) => setGender(e.target.value as 'M' | 'F')}
@@ -60,13 +60,13 @@ export const PlayerList: React.FC<PlayerListProps> = ({
               <option key={v} value={v}>{v.toFixed(1)}</option>
             ))}
           </select>
+          <button
+            type="submit"
+            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 whitespace-nowrap"
+          >
+            <UserPlus size={20} /> Add
+          </button>
         </div>
-        <button
-          type="submit"
-          className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2"
-        >
-          <UserPlus size={20} /> Add
-        </button>
       </form>
 
       <div className="space-y-2 max-h-[300px] overflow-y-auto">
