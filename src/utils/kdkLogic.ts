@@ -203,10 +203,26 @@ const generateGenericSchedule = (players: Player[], rounds: number, courts: numb
     for (let m = 0; m < matchesPerRound; m++) {
       if (playerIdx + 3 >= availablePlayers.length) break;
       
-      const p1 = availablePlayers[playerIdx++];
-      const p2 = availablePlayers[playerIdx++];
-      const p3 = availablePlayers[playerIdx++];
-      const p4 = availablePlayers[playerIdx++];
+      let matchPlayers = [
+        availablePlayers[playerIdx++],
+        availablePlayers[playerIdx++],
+        availablePlayers[playerIdx++],
+        availablePlayers[playerIdx++]
+      ];
+
+      // Avoid MM vs FF ( 남남 vs 여여 )
+      // If we have 2 Men and 2 Women, pair them as MF vs MF
+      const menInGroup = matchPlayers.filter(p => p.gender === 'M' || !p.gender);
+      const womenInGroup = matchPlayers.filter(p => p.gender === 'F');
+
+      if (menInGroup.length === 2 && womenInGroup.length === 2) {
+        matchPlayers = [menInGroup[0], womenInGroup[0], menInGroup[1], womenInGroup[1]];
+      }
+
+      const p1 = matchPlayers[0];
+      const p2 = matchPlayers[1];
+      const p3 = matchPlayers[2];
+      const p4 = matchPlayers[3];
 
       matches.push({
         id: `match-gen-${currentRound}-${m}`,
