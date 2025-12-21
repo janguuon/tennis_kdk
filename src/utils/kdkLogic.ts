@@ -294,34 +294,67 @@ const generateStrictGenderSchedule = (players: Player[], rounds: number, courts:
       return true;
     };
 
-    // Try to form matches by randomly selecting available types (XD, MD, WD)
-    // to ensure a mix of match types rather than prioritizing one over another.
+    // Try to form matches by prioritizing the players with the fewest games played
+    // Iterate through sorted players and try to find a match for the highest priority available player
     while (roundMatches.length < maxMatchesPerRound) {
-      const availMen = men.filter(isAvailable);
-      const availWomen = women.filter(isAvailable);
+      let matchFormed = false;
 
-      const canMD = availMen.length >= 4;
-      const canWD = availWomen.length >= 4;
-      const canXD = availMen.length >= 2 && availWomen.length >= 2;
+      // Find the first available player who can form a match
+      for (const p of sortedPlayers) {
+        if (!isAvailable(p)) continue;
 
-      if (!canMD && !canWD && !canXD) break;
+        const options: ('MD' | 'WD' | 'XD')[] = [];
+        const availMen = men.filter(isAvailable);
+        const availWomen = women.filter(isAvailable);
 
-      const options: ('MD' | 'WD' | 'XD')[] = [];
-      if (canMD) options.push('MD');
-      if (canWD) options.push('WD');
-      if (canXD) options.push('XD');
-      // Weight XD slightly higher to encourage mixing if desired, 
-      // or keep flat for pure random. Let's keep flat for now as requested.
-      
-      const type = options[Math.floor(Math.random() * options.length)];
+        if (p.gender === 'M' || !p.gender) {
+          // Player is Male
+          // Can form MD? Needs 3 other men (total 4)
+          if (availMen.length >= 4) options.push('MD');
+          // Can form XD? Needs 1 other man and 2 women
+          if (availMen.length >= 2 && availWomen.length >= 2) options.push('XD');
+        } else {
+          // Player is Female
+          // Can form WD? Needs 3 other women (total 4)
+          if (availWomen.length >= 4) options.push('WD');
+          // Can form XD? Needs 2 men and 1 other woman
+          if (availMen.length >= 2 && availWomen.length >= 2) options.push('XD');
+        }
 
-      if (type === 'XD') {
-        addMatch(availMen[0], availMen[1], availWomen[0], availWomen[1]);
-      } else if (type === 'MD') {
-        addMatch(availMen[0], availMen[1], availMen[2], availMen[3]);
-      } else if (type === 'WD') {
-        addMatch(availWomen[0], availWomen[1], availWomen[2], availWomen[3]);
+        if (options.length > 0) {
+          // We found a match for this priority player
+          const type = options[Math.floor(Math.random() * options.length)];
+
+          if (type === 'XD') {
+            // Ensure p is included
+            // If p is M: take p, 1 other M, 2 W
+            // If p is W: take 2 M, p, 1 other W
+            // Actually, since our 'avail' lists are sorted by priority, 
+            // and 'p' is the highest priority available player encountered so far,
+            // 'p' will definitely be availMen[0] or availWomen[0]??
+            // Not necessarily if we skipped someone. 
+            // BUT, since we iterate sortedPlayers, 'p' is the *first* available one we haven't skipped yet.
+            // So 'p' should be the top of their gender list?
+            // Yes, because if there was an available M before 'p' (and p is M), we would have processed them.
+            // So we can just call addMatch with top available people?
+            // Wait, if p is M, and we skipped a W before who couldn't form a match...
+            // Then p is top M.
+            // So standard addMatch logic (taking from top of lists) works fine 
+            // as long as the types align.
+            
+            addMatch(availMen[0], availMen[1], availWomen[0], availWomen[1]);
+          } else if (type === 'MD') {
+            addMatch(availMen[0], availMen[1], availMen[2], availMen[3]);
+          } else if (type === 'WD') {
+            addMatch(availWomen[0], availWomen[1], availWomen[2], availWomen[3]);
+          }
+
+          matchFormed = true;
+          break; // Break inner loop to re-evaluate from top
+        }
       }
+
+      if (!matchFormed) break; // No more matches possible
     }
 
     // Note: Players left over sit out this round
