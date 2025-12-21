@@ -21,7 +21,9 @@ function App() {
     courts,
     setCourts,
     mixedDoubles,
-    setMixedDoubles
+    setMixedDoubles,
+    strictGenderMode,
+    setStrictGenderMode
   } = useTournament();
 
   const hasMatches = matches.length > 0;
@@ -120,7 +122,7 @@ function App() {
                 Standard KDK is 4 rounds. 12/16 players have fixed patterns for 4 rounds.
               </p>
 
-              <div className="mb-6 flex items-center">
+              <div className="mb-2 flex items-center">
                 <input
                   type="checkbox"
                   id="mixedDoubles"
@@ -130,7 +132,21 @@ function App() {
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
                 />
                 <label htmlFor="mixedDoubles" className={`ml-2 block text-sm font-medium ${hasMatches ? 'text-gray-400' : 'text-gray-700'}`}>
-                  Mixed Doubles Mode
+                  Mixed Doubles Only
+                </label>
+              </div>
+
+              <div className="mb-6 flex items-center">
+                <input
+                  type="checkbox"
+                  id="strictGenderMode"
+                  checked={strictGenderMode}
+                  onChange={(e) => setStrictGenderMode(e.target.checked)}
+                  disabled={hasMatches}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
+                />
+                <label htmlFor="strictGenderMode" className={`ml-2 block text-sm font-medium ${hasMatches ? 'text-gray-400' : 'text-gray-700'}`}>
+                  Strict Gender Mode (MD/WD/XD Only)
                 </label>
               </div>
               

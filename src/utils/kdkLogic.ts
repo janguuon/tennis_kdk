@@ -1,6 +1,6 @@
 import { Player, Match } from '../types';
 
-export const generateKDKMatches = (players: Player[], courts: number = 1, targetRounds: number = 4, mixedDoubles: boolean = false): Match[] => {
+export const generateKDKMatches = (players: Player[], courts: number = 1, targetRounds: number = 4, mixedDoubles: boolean = false, strictGenderMode: boolean = false): Match[] => {
   const activePlayers = players.filter(p => p.active);
   const playerCount = activePlayers.length;
   
@@ -8,6 +8,10 @@ export const generateKDKMatches = (players: Player[], courts: number = 1, target
   if (playerCount < 4) return [];
 
   let matches: Match[] = [];
+
+  if (strictGenderMode) {
+     return generateStrictGenderSchedule(activePlayers, targetRounds, courts);
+  }
 
   if (mixedDoubles) {
     // Mixed doubles mode: Skip fixed patterns and use specialized generation
@@ -233,6 +237,94 @@ const generateMixedDoublesSchedule = (players: Player[], rounds: number, courts:
 
       teamPlayers.forEach(p => playCounts[p.id]++);
     });
+  }
+
+  return matches;
+};
+
+const generateStrictGenderSchedule = (players: Player[], rounds: number, courts: number, startRound: number = 1): Match[] => {
+  const matches: Match[] = [];
+  // We don't strictly enforce matchesPerRound because strict mode might result in fewer matches if gender counts don't align
+  const maxMatchesPerRound = Math.floor(players.length / 4);
+  
+  const playCounts: Record<string, number> = {};
+  players.forEach(p => playCounts[p.id] = 0);
+
+  for (let r = 0; r < rounds; r++) {
+    const currentRound = startRound + r;
+    const roundMatches: Match[] = [];
+
+    // Sort players by play count (ascending), then random
+    const sortedPlayers = [...players]
+      .map(value => ({ value, sort: Math.random() }))
+      .sort((a, b) => a.sort - b.sort) // Random shuffle first
+      .map(({ value }) => value)
+      .sort((a, b) => playCounts[a.id] - playCounts[b.id]); // Then strict play count sort
+
+    // Separate by gender
+    const men = sortedPlayers.filter(p => p.gender === 'M' || !p.gender);
+    const women = sortedPlayers.filter(p => p.gender === 'F');
+
+    // We will track used players in this round to prevent double booking
+    const usedPlayerIds = new Set<string>();
+
+    const isAvailable = (p: Player) => !usedPlayerIds.has(p.id);
+
+    // Helper to add match
+    const addMatch = (p1: Player, p2: Player, p3: Player, p4: Player) => {
+      if (roundMatches.length >= maxMatchesPerRound) return false;
+      
+      const teamPlayers = balanceTeamsNTRP([p1, p2, p3, p4]);
+      
+      matches.push({
+        id: `match-strict-${currentRound}-${roundMatches.length}`,
+        round: currentRound,
+        courtNumber: (roundMatches.length % courts) + 1,
+        team1: [teamPlayers[0].id, teamPlayers[1].id],
+        team2: [teamPlayers[2].id, teamPlayers[3].id],
+        score1: null,
+        score2: null,
+      });
+
+      roundMatches.push(matches[matches.length - 1]);
+      [p1, p2, p3, p4].forEach(p => {
+        usedPlayerIds.add(p.id);
+        playCounts[p.id]++;
+      });
+      return true;
+    };
+
+    // Try to form matches by randomly selecting available types (XD, MD, WD)
+    // to ensure a mix of match types rather than prioritizing one over another.
+    while (roundMatches.length < maxMatchesPerRound) {
+      const availMen = men.filter(isAvailable);
+      const availWomen = women.filter(isAvailable);
+
+      const canMD = availMen.length >= 4;
+      const canWD = availWomen.length >= 4;
+      const canXD = availMen.length >= 2 && availWomen.length >= 2;
+
+      if (!canMD && !canWD && !canXD) break;
+
+      const options: ('MD' | 'WD' | 'XD')[] = [];
+      if (canMD) options.push('MD');
+      if (canWD) options.push('WD');
+      if (canXD) options.push('XD');
+      // Weight XD slightly higher to encourage mixing if desired, 
+      // or keep flat for pure random. Let's keep flat for now as requested.
+      
+      const type = options[Math.floor(Math.random() * options.length)];
+
+      if (type === 'XD') {
+        addMatch(availMen[0], availMen[1], availWomen[0], availWomen[1]);
+      } else if (type === 'MD') {
+        addMatch(availMen[0], availMen[1], availMen[2], availMen[3]);
+      } else if (type === 'WD') {
+        addMatch(availWomen[0], availWomen[1], availWomen[2], availWomen[3]);
+      }
+    }
+
+    // Note: Players left over sit out this round
   }
 
   return matches;

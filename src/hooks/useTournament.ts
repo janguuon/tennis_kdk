@@ -10,6 +10,7 @@ interface TournamentState {
   courts: number;
   rounds: number;
   mixedDoubles: boolean;
+  strictGenderMode: boolean;
 }
 
 export const useTournament = () => {
@@ -22,7 +23,8 @@ export const useTournament = () => {
         ...parsed,
         rounds: parsed.rounds || 4,
         courts: parsed.courts || 1,
-        mixedDoubles: parsed.mixedDoubles || false
+        mixedDoubles: parsed.mixedDoubles || false,
+        strictGenderMode: parsed.strictGenderMode || false
       };
     }
     return {
@@ -30,7 +32,8 @@ export const useTournament = () => {
       matches: [],
       courts: 1,
       rounds: 4,
-      mixedDoubles: false
+      mixedDoubles: false,
+      strictGenderMode: false
     };
   });
 
@@ -77,8 +80,12 @@ export const useTournament = () => {
     setState(prev => ({ ...prev, mixedDoubles }));
   };
 
+  const setStrictGenderMode = (strictGenderMode: boolean) => {
+    setState(prev => ({ ...prev, strictGenderMode }));
+  };
+
   const generateMatches = () => {
-    const newMatches = generateKDKMatches(state.players, state.courts, state.rounds, state.mixedDoubles);
+    const newMatches = generateKDKMatches(state.players, state.courts, state.rounds, state.mixedDoubles, state.strictGenderMode);
     setState(prev => ({ ...prev, matches: newMatches }));
   };
 
@@ -172,6 +179,8 @@ export const useTournament = () => {
     courts: state.courts,
     setCourts,
     mixedDoubles: state.mixedDoubles,
-    setMixedDoubles
+    setMixedDoubles,
+    strictGenderMode: state.strictGenderMode,
+    setStrictGenderMode
   };
 };
