@@ -111,7 +111,8 @@ export const useTournament = () => {
             matches: [],
             courts: 1,
             rounds: 4,
-            mixedDoubles: false
+            mixedDoubles: false,
+            strictGenderMode: false
         });
       }
   }
