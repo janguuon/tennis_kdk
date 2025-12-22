@@ -14,20 +14,20 @@ export const Standings: React.FC<StandingsProps> = ({ stats, players }) => {
     <div className="bg-white p-6 rounded-lg shadow-md">
       <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
         <Trophy className="text-yellow-500" />
-        Standings
+        순위표
       </h2>
       
       <div className="overflow-x-auto">
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b">
             <tr>
-              <th className="px-4 py-3">Rank</th>
-              <th className="px-4 py-3">Player</th>
-              <th className="px-4 py-3 text-center">Played</th>
-              <th className="px-4 py-3 text-center">W-L-D</th>
-              <th className="px-4 py-3 text-center">Win %</th>
-              <th className="px-4 py-3 text-center">Diff</th>
-              <th className="px-4 py-3 text-center">Pts</th>
+              <th className="px-4 py-3">순위</th>
+              <th className="px-4 py-3">플레이어</th>
+              <th className="px-4 py-3 text-center">경기수</th>
+              <th className="px-4 py-3 text-center">승-패-무</th>
+              <th className="px-4 py-3 text-center">승률</th>
+              <th className="px-4 py-3 text-center">득실</th>
+              <th className="px-4 py-3 text-center">승점</th>
             </tr>
           </thead>
           <tbody>
@@ -64,7 +64,7 @@ export const Standings: React.FC<StandingsProps> = ({ stats, players }) => {
             {stats.length === 0 && (
               <tr>
                 <td colSpan={7} className="text-center py-4 text-gray-500">
-                  No games played yet.
+                  진행된 경기가 없습니다.
                 </td>
               </tr>
             )}

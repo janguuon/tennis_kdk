@@ -39,8 +39,8 @@ function App() {
                 <Trophy className="w-8 h-8 text-blue-800" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold">Tennis KDK Manager</h1>
-                <p className="text-blue-200 text-sm">Partner Rotation Tournament System</p>
+                <h1 className="text-2xl font-bold">테니스 KDK 매니저</h1>
+                <p className="text-blue-200 text-sm">파트너 로테이션 매칭 시스템</p>
               </div>
             </div>
             
@@ -50,14 +50,14 @@ function App() {
                   onClick={resetTournament}
                   className="flex items-center gap-2 px-4 py-2 bg-blue-700 hover:bg-blue-600 rounded-md transition-colors text-sm"
                 >
-                  <RefreshCw size={16} /> Reset Matches
+                  <RefreshCw size={16} /> 매치 초기화
                 </button>
               )}
               <button
                 onClick={clearAllData}
                 className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-md transition-colors text-sm"
               >
-                <Trash2 size={16} /> Reset All
+                <Trash2 size={16} /> 전체 초기화
               </button>
             </div>
           </div>
@@ -79,17 +79,17 @@ function App() {
             <div className="bg-white p-6 rounded-lg shadow-md">
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
                 <Calendar className="text-blue-600" />
-                Tournament Control
+                토너먼트 설정
               </h2>
               <p className="text-gray-600 mb-4 text-sm">
-                Ready to start? Generate matches based on the active players list.
-                Make sure you have at least 4 players.
+                시작할 준비가 되셨나요? 활성 플레이어 목록을 기반으로 매치를 생성합니다.
+                최소 4명의 플레이어가 필요합니다.
               </p>
 
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Rounds
+                    라운드 수
                   </label>
                   <select
                     value={rounds}
@@ -104,7 +104,7 @@ function App() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Courts
+                    코트 수
                   </label>
                   <select
                     value={courts}
@@ -119,7 +119,7 @@ function App() {
                 </div>
               </div>
               <p className="text-xs text-gray-500 mb-4 mt-[-10px]">
-                Standard KDK is 4 rounds. 12/16 players have fixed patterns for 4 rounds.
+                기본 KDK는 4라운드입니다. 12명 또는 16명일 경우 4라운드 고정 패턴이 적용됩니다.
               </p>
 
               <div className="mb-2 flex items-center">
@@ -132,7 +132,7 @@ function App() {
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
                 />
                 <label htmlFor="mixedDoubles" className={`ml-2 block text-sm font-medium ${hasMatches ? 'text-gray-400' : 'text-gray-700'}`}>
-                  Mixed Doubles Only
+                  혼합 복식만 (남녀 혼성)
                 </label>
               </div>
 
@@ -146,7 +146,7 @@ function App() {
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
                 />
                 <label htmlFor="strictGenderMode" className={`ml-2 block text-sm font-medium ${hasMatches ? 'text-gray-400' : 'text-gray-700'}`}>
-                  Strict Gender Mode (MD/WD/XD Only)
+                  성별 매칭 모드 (남복/여복/혼복만 허용)
                 </label>
               </div>
               
@@ -159,12 +159,12 @@ function App() {
                     : 'bg-green-600 hover:bg-green-700 shadow-md hover:shadow-lg'
                   }`}
               >
-                {hasMatches ? 'Matches Generated' : 'Generate Matches'}
+                {hasMatches ? '매치 생성 완료' : '매치 생성'}
               </button>
               
               {players.filter(p => p.active).length < 4 && (
                 <p className="text-red-500 text-xs mt-2 text-center">
-                  * Minimum 4 active players required
+                  * 최소 4명의 활성 플레이어가 필요합니다
                 </p>
               )}
             </div>
@@ -184,8 +184,8 @@ function App() {
             ) : (
               <div className="bg-white rounded-lg shadow-md p-12 text-center text-gray-500">
                 <Users className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <h3 className="text-xl font-medium text-gray-900 mb-2">No Matches Yet</h3>
-                <p>Add players and click "Generate Matches" to begin the tournament.</p>
+                <h3 className="text-xl font-medium text-gray-900 mb-2">생성된 매치가 없습니다</h3>
+                <p>플레이어를 추가하고 "매치 생성" 버튼을 눌러 토너먼트를 시작하세요.</p>
               </div>
             )}
           </div>
@@ -194,7 +194,7 @@ function App() {
       </main>
       
       <footer className="text-center py-6 text-gray-500 text-sm">
-        <p>&copy; 2024 Tennis KDK Manager. All matches run locally in your browser.</p>
+        <p>&copy; 2024 테니스 KDK 매니저. 모든 데이터는 브라우저에 로컬로 저장됩니다.</p>
       </footer>
     </div>
   );

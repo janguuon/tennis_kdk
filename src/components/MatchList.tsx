@@ -15,16 +15,16 @@ export const MatchList: React.FC<MatchListProps> = ({ matches, players, onUpdate
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
-      <h2 className="text-xl font-bold mb-4">Match Schedule</h2>
+      <h2 className="text-xl font-bold mb-4">경기 일정</h2>
       
       {matches.length === 0 ? (
-        <p className="text-gray-500 text-center py-8">No matches generated yet.</p>
+        <p className="text-gray-500 text-center py-8">생성된 대진표가 없습니다.</p>
       ) : (
         <div className="space-y-6">
           {rounds.map(round => (
             <div key={round} className="border-b last:border-0 pb-4 last:pb-0">
               <h3 className="text-lg font-semibold text-gray-800 mb-3 bg-gray-100 px-3 py-1 rounded">
-                Round {round}
+                {round} 라운드
               </h3>
               <div className="grid gap-3 sm:grid-cols-1 md:grid-cols-2">
                 {matches.filter(m => m.round === round).map(match => (
@@ -65,8 +65,8 @@ const MatchCard: React.FC<{
   return (
     <div className={`border rounded-lg p-3 ${isCompleted ? 'bg-gray-50 border-gray-200' : 'bg-white border-blue-200 shadow-sm'}`}>
       <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
-        <span>Court {match.courtNumber}</span>
-        {isCompleted && <span className="flex items-center text-green-600 gap-1"><CheckCircle2 size={14}/> Finished</span>}
+        <span>{match.courtNumber}번 코트</span>
+        {isCompleted && <span className="flex items-center text-green-600 gap-1"><CheckCircle2 size={14}/> 경기 종료</span>}
       </div>
       
       <div className="flex items-center justify-between gap-2">
@@ -118,14 +118,14 @@ const MatchCard: React.FC<{
              onClick={handleSave}
              className="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
            >
-             Save Score
+             점수 저장
            </button>
         ) : (
           <button 
             onClick={() => setIsEditing(true)}
             className="text-xs text-blue-500 hover:text-blue-700 underline"
           >
-            Edit
+            수정
           </button>
         )}
       </div>

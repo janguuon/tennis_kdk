@@ -99,13 +99,13 @@ export const useTournament = () => {
   };
 
   const resetTournament = () => {
-    if (confirm('Are you sure you want to reset the tournament? All matches and scores will be lost.')) {
+    if (confirm('대회를 초기화 하시겠습니까? 모든 대진표와 점수가 삭제됩니다.')) {
         setState(prev => ({ ...prev, matches: [] }));
     }
   };
 
   const clearAllData = () => {
-      if (confirm('Are you sure you want to clear EVERYTHING including players?')) {
+      if (confirm('정말로 모든 데이터를 삭제하시겠습니까? 플레이어 목록도 포함됩니다.')) {
         setState({
             players: [],
             matches: [],
