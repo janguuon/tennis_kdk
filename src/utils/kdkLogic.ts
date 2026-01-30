@@ -3,49 +3,22 @@ import { Player, Match } from '../types';
 export const generateKDKMatches = (players: Player[], courts: number = 1, targetRounds: number = 4, mixedDoubles: boolean = false, strictGenderMode: boolean = false): Match[] => {
   const activePlayers = players.filter(p => p.active);
   const playerCount = activePlayers.length;
-  
+
   // Basic validation
   if (playerCount < 4) return [];
 
-  let matches: Match[] = [];
-
   if (strictGenderMode) {
-     return generateStrictGenderSchedule(activePlayers, targetRounds, courts);
+    return generateStrictGenderSchedule(activePlayers, targetRounds, courts);
   }
 
   if (mixedDoubles) {
     // Mixed doubles mode: Skip fixed patterns and use specialized generation
     return generateMixedDoublesSchedule(activePlayers, targetRounds, courts);
   }
-  
-  // Check if we have a fixed pattern for this number of players
-  if (playerCount === 8 || playerCount === 12 || playerCount === 16) {
-    let fixedMatches: Match[] = [];
-    
-    if (playerCount === 8) {
-      fixedMatches = generate8PlayerSchedule(activePlayers, courts);
-    } else if (playerCount === 12) {
-      fixedMatches = generate12PlayerSchedule(activePlayers, courts);
-    } else if (playerCount === 16) {
-      fixedMatches = generate16PlayerSchedule(activePlayers, courts);
-    }
 
-    if (targetRounds <= 4) {
-      // If requested rounds are less than or equal to 4, just slice the fixed schedule
-      matches = fixedMatches.filter(m => m.round <= targetRounds);
-    } else {
-      // If requested rounds > 4, keep the fixed schedule and add generic rounds
-      matches = [...fixedMatches];
-      const extraRounds = targetRounds - 4;
-      const genericMatches = generateGenericSchedule(activePlayers, extraRounds, courts, 5); // Start from round 5
-      matches = [...matches, ...genericMatches];
-    }
-  } else {
-    // For other player counts, use generic schedule for all rounds
-    matches = generateGenericSchedule(activePlayers, targetRounds, courts);
-  }
-
-  return matches;
+  // Use generic schedule with duplicate minimization for all player counts
+  // This ensures partner/opponent history tracking works properly
+  return generateGenericSchedule(activePlayers, targetRounds, courts);
 };
 
 const balanceTeamsNTRP = (players: Player[]): Player[] => {
@@ -109,81 +82,54 @@ const balanceTeamsNTRP = (players: Player[]): Player[] => {
   return combos[0].teams;
 };
 
-const createMatchesFromIndices = (players: Player[], scheduleIndices: number[][][], courts: number): Match[] => {
-  return scheduleIndices.map((matchIds, index) => {
-    const matchesPerRound = players.length / 4;
-    const round = Math.floor(index / matchesPerRound) + 1;
-    // Distribute matches across available courts
-    // matchInRound is 0-indexed within the round
-    const matchInRound = index % matchesPerRound;
-    const courtNumber = (matchInRound % courts) + 1;
-
-    return {
-      id: `match-${players.length}-${index}`,
-      round,
-      courtNumber,
-      team1: [players[matchIds[0][0]].id, players[matchIds[0][1]].id],
-      team2: [players[matchIds[1][0]].id, players[matchIds[1][1]].id],
-      score1: null,
-      score2: null,
-    };
-  });
-};
-
-const generate8PlayerSchedule = (players: Player[], courts: number): Match[] => {
-  // Standard KDK 8-player, 4-game schedule
-  const scheduleIndices = [
-    // Round 1
-    [[0, 1], [2, 3]], [[4, 5], [6, 7]],
-    // Round 2
-    [[0, 4], [2, 6]], [[1, 5], [3, 7]],
-    // Round 3
-    [[0, 2], [5, 7]], [[1, 3], [4, 6]],
-    // Round 4
-    [[0, 7], [3, 6]], [[1, 4], [2, 5]]
-  ];
-
-  return createMatchesFromIndices(players, scheduleIndices, courts);
-};
-
-const generate12PlayerSchedule = (players: Player[], courts: number): Match[] => {
-  // 12 Players, 3 Courts, 4 Rounds
-  const scheduleIndices = [
-    // Round 1
-    [[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8, 9], [10, 11]],
-    // Round 2
-    [[0, 4], [2, 6]], [[1, 5], [3, 7]], [[8, 10], [9, 11]],
-    // Round 3
-    [[0, 8], [2, 9]], [[1, 6], [3, 10]], [[4, 7], [5, 11]],
-    // Round 4
-    [[0, 2], [1, 3]], [[4, 6], [5, 7]], [[8, 11], [9, 10]]
-  ];
-
-  return createMatchesFromIndices(players, scheduleIndices, courts);
-};
-
-const generate16PlayerSchedule = (players: Player[], courts: number): Match[] => {
-  // 16 Players, 4 Courts, 4 Rounds
-  const scheduleIndices = [
-    // Round 1
-    [[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8, 9], [10, 11]], [[12, 13], [14, 15]],
-    // Round 2
-    [[0, 4], [8, 12]], [[1, 5], [9, 13]], [[2, 6], [10, 14]], [[3, 7], [11, 15]],
-    // Round 3
-    [[0, 2], [5, 7]], [[1, 3], [4, 6]], [[8, 10], [13, 15]], [[9, 11], [12, 14]],
-    // Round 4
-    [[0, 8], [1, 9]], [[2, 10], [3, 11]], [[4, 12], [5, 13]], [[6, 14], [7, 15]]
-  ];
-
-  return createMatchesFromIndices(players, scheduleIndices, courts);
-};
-
 const generateMixedDoublesSchedule = (players: Player[], rounds: number, courts: number, startRound: number = 1): Match[] => {
   const matches: Match[] = [];
   const matchesPerRound = Math.floor(players.length / 4);
-  
+
   const playCounts: Record<string, number> = {};
   players.forEach(p => playCounts[p.id] = 0);
+
+  // Track partner and opponent history for duplicate minimization
+  const partnerHistory: Record<string, Record<string, number>> = {};
+  const opponentHistory: Record<string, Record<string, number>> = {};
+  players.forEach(p => {
+    partnerHistory[p.id] = {};
+    opponentHistory[p.id] = {};
+  });
+
+  // Helper to calculate pair duplicate score
+  const getPairScore = (p1: Player, p2: Player): number => {
+    return (partnerHistory[p1.id][p2.id] || 0) + (partnerHistory[p2.id][p1.id] || 0);
+  };
+
+  // Helper to calculate opponent duplicate score
+  const getOpponentScore = (team1: Player[], team2: Player[]): number => {
+    let score = 0;
+    for (const p1 of team1) {
+      for (const p2 of team2) {
+        score += (opponentHistory[p1.id][p2.id] || 0);
+      }
+    }
+    return score;
+  };
+
+  // Helper to update history after a match
+  const updateHistory = (p1: Player, p2: Player, p3: Player, p4: Player) => {
+    // Update partner history (bidirectional)
+    partnerHistory[p1.id][p2.id] = (partnerHistory[p1.id][p2.id] || 0) + 1;
+    partnerHistory[p2.id][p1.id] = (partnerHistory[p2.id][p1.id] || 0) + 1;
+    partnerHistory[p3.id][p4.id] = (partnerHistory[p3.id][p4.id] || 0) + 1;
+    partnerHistory[p4.id][p3.id] = (partnerHistory[p4.id][p3.id] || 0) + 1;
+    // Update opponent history (bidirectional)
+    opponentHistory[p1.id][p3.id] = (opponentHistory[p1.id][p3.id] || 0) + 1;
+    opponentHistory[p1.id][p4.id] = (opponentHistory[p1.id][p4.id] || 0) + 1;
+    opponentHistory[p2.id][p3.id] = (opponentHistory[p2.id][p3.id] || 0) + 1;
+    opponentHistory[p2.id][p4.id] = (opponentHistory[p2.id][p4.id] || 0) + 1;
+    opponentHistory[p3.id][p1.id] = (opponentHistory[p3.id][p1.id] || 0) + 1;
+    opponentHistory[p3.id][p2.id] = (opponentHistory[p3.id][p2.id] || 0) + 1;
+    opponentHistory[p4.id][p1.id] = (opponentHistory[p4.id][p1.id] || 0) + 1;
+    opponentHistory[p4.id][p2.id] = (opponentHistory[p4.id][p2.id] || 0) + 1;
+  };
 
   for (let r = 0; r < rounds; r++) {
     const currentRound = startRound + r;
@@ -206,27 +152,87 @@ const generateMixedDoublesSchedule = (players: Player[], rounds: number, courts:
       .map(({ value }) => value);
 
     const roundMatches: Player[][] = [];
+    const usedMen = new Set<string>();
+    const usedWomen = new Set<string>();
 
-    // 2. Form Mixed Doubles (M, F) vs (M, F)
-    let mIdx = 0;
-    let wIdx = 0;
+    // 2. Form Mixed Doubles (M, F) vs (M, F) with duplicate minimization
+    const availableMen = () => men.filter(m => !usedMen.has(m.id));
+    const availableWomen = () => women.filter(w => !usedWomen.has(w.id));
 
-    // Need at least 2 men and 2 women for each mixed doubles match
-    while (mIdx + 2 <= men.length && wIdx + 2 <= women.length) {
+    while (availableMen().length >= 2 && availableWomen().length >= 2) {
       if (roundMatches.length >= matchesPerRound) break;
-      const m1 = men[mIdx];
-      const w1 = women[wIdx];
-      const m2 = men[mIdx + 1];
-      const w2 = women[wIdx + 1];
-      roundMatches.push([m1, w1, m2, w2]);
-      mIdx += 2;
-      wIdx += 2;
+
+      const menPool = availableMen();
+      const womenPool = availableWomen();
+
+      // Find best combination with minimum duplicate score
+      let bestMatch: Player[] | null = null;
+      let bestScore = Infinity;
+
+      // Try different combinations of 2 men and 2 women
+      const menCombinations: Player[][] = [];
+      for (let i = 0; i < menPool.length; i++) {
+        for (let j = i + 1; j < menPool.length; j++) {
+          menCombinations.push([menPool[i], menPool[j]]);
+        }
+      }
+
+      const womenCombinations: Player[][] = [];
+      for (let i = 0; i < womenPool.length; i++) {
+        for (let j = i + 1; j < womenPool.length; j++) {
+          womenCombinations.push([womenPool[i], womenPool[j]]);
+        }
+      }
+
+      // Limit combinations to avoid performance issues
+      const maxMenCombos = Math.min(menCombinations.length, 10);
+      const maxWomenCombos = Math.min(womenCombinations.length, 10);
+
+      for (let mi = 0; mi < maxMenCombos; mi++) {
+        const [m1, m2] = menCombinations[mi];
+        for (let wi = 0; wi < maxWomenCombos; wi++) {
+          const [w1, w2] = womenCombinations[wi];
+
+          // Try both team formations: (m1,w1) vs (m2,w2) and (m1,w2) vs (m2,w1)
+          const formations = [
+            [m1, w1, m2, w2],
+            [m1, w2, m2, w1]
+          ];
+
+          for (const formation of formations) {
+            const pairScore = getPairScore(formation[0], formation[1]) + getPairScore(formation[2], formation[3]);
+            const oppScore = getOpponentScore([formation[0], formation[1]], [formation[2], formation[3]]);
+            const totalScore = pairScore + oppScore;
+
+            if (totalScore < bestScore) {
+              bestScore = totalScore;
+              bestMatch = formation;
+            }
+
+            if (totalScore === 0) break;
+          }
+
+          if (bestScore === 0) break;
+        }
+
+        if (bestScore === 0) break;
+      }
+
+      if (bestMatch) {
+        roundMatches.push(bestMatch);
+        usedMen.add(bestMatch[0].id);
+        usedMen.add(bestMatch[2].id);
+        usedWomen.add(bestMatch[1].id);
+        usedWomen.add(bestMatch[3].id);
+      } else {
+        break;
+      }
     }
 
     // 3. Form remaining matches with leftovers
     const leftovers = [
-      ...men.slice(mIdx),
-      ...women.slice(wIdx)
+      ...men.filter(m => !usedMen.has(m.id)),
+      ...women.filter(w => !usedWomen.has(w.id))
     ];
 
     let lIdx = 0;
@@ -253,6 +259,7 @@ const generateMixedDoublesSchedule = (players: Player[], rounds: number, courts:
       });
 
       teamPlayers.forEach(p => playCounts[p.id]++);
+      updateHistory(teamPlayers[0], teamPlayers[1], teamPlayers[2], teamPlayers[3]);
     });
   }
 
@@ -263,9 +270,12 @@ const generateStrictGenderSchedule = (players: Player[], rounds: number, courts:
   const matches: Match[] = [];
   // We don't strictly enforce matchesPerRound because strict mode might result in fewer matches if gender counts don't align
   const maxMatchesPerRound = Math.floor(players.length / 4);
-  
+
   const playCounts: Record<string, number> = {};
   players.forEach(p => playCounts[p.id] = 0);
+
+  // Track match type counts for balanced distribution
+  const matchTypeCounts: Record<'MD' | 'WD' | 'XD', number> = { MD: 0, WD: 0, XD: 0 };
 
   for (let r = 0; r < rounds; r++) {
     const currentRound = startRound + r;
@@ -288,11 +298,11 @@ const generateStrictGenderSchedule = (players: Player[], rounds: number, courts:
     const isAvailable = (p: Player) => !usedPlayerIds.has(p.id);
 
     // Helper to add match
-    const addMatch = (p1: Player, p2: Player, p3: Player, p4: Player) => {
+    const addMatch = (p1: Player, p2: Player, p3: Player, p4: Player, matchType: 'MD' | 'WD' | 'XD') => {
       if (roundMatches.length >= maxMatchesPerRound) return false;
-      
+
       const teamPlayers = balanceTeamsNTRP([p1, p2, p3, p4]);
-      
+
       matches.push({
         id: `match-strict-${currentRound}-${roundMatches.length}`,
         round: currentRound,
@@ -308,6 +318,9 @@ const generateStrictGenderSchedule = (players: Player[], rounds: number, courts:
         usedPlayerIds.add(p.id);
         playCounts[p.id]++;
       });
+
+      // Update match type count
+      matchTypeCounts[matchType]++;
       return true;
     };
 
@@ -339,28 +352,29 @@ const generateStrictGenderSchedule = (players: Player[], rounds: number, courts:
         }
 
         if (options.length > 0) {
-          // We found a match for this priority player
-          const type = options[Math.floor(Math.random() * options.length)];
+          // Select match type with balanced distribution (prefer least used type)
+          const sortedOptions = [...options].sort((a, b) => matchTypeCounts[a] - matchTypeCounts[b]);
+          const type = sortedOptions[0];
 
           if (type === 'XD') {
             // Ensure p is included in the match
             if (p.gender === 'M') {
               // p is Male: take p, 1 other man, and 2 women
               const otherMen = availMen.filter(m => m.id !== p.id);
-              addMatch(p, otherMen[0], availWomen[0], availWomen[1]);
+              addMatch(p, otherMen[0], availWomen[0], availWomen[1], 'XD');
             } else {
               // p is Female: take 2 men, p, and 1 other woman
               const otherWomen = availWomen.filter(w => w.id !== p.id);
-              addMatch(availMen[0], availMen[1], p, otherWomen[0]);
+              addMatch(availMen[0], availMen[1], p, otherWomen[0], 'XD');
             }
           } else if (type === 'MD') {
             // Ensure p is included in men's doubles
             const otherMen = availMen.filter(m => m.id !== p.id);
-            addMatch(p, otherMen[0], otherMen[1], otherMen[2]);
+            addMatch(p, otherMen[0], otherMen[1], otherMen[2], 'MD');
           } else if (type === 'WD') {
             // Ensure p is included in women's doubles
             const otherWomen = availWomen.filter(w => w.id !== p.id);
-            addMatch(p, otherWomen[0], otherWomen[1], otherWomen[2]);
+            addMatch(p, otherWomen[0], otherWomen[1], otherWomen[2], 'WD');
           }
 
           matchFormed = true;
@@ -382,14 +396,52 @@ const generateGenericSchedule = (players: Player[], rounds: number, courts: numb
   const matches: Match[] = [];
   const playerCount = players.length;
   const matchesPerRound = Math.floor(playerCount / 4);
-  
+
   // Track play counts
   const playCounts: Record<string, number> = {};
   players.forEach(p => playCounts[p.id] = 0);
 
+  // Track partner and opponent history for duplicate minimization
+  const partnerHistory: Record<string, Record<string, number>> = {};
+  const opponentHistory: Record<string, Record<string, number>> = {};
+  players.forEach(p => {
+    partnerHistory[p.id] = {};
+    opponentHistory[p.id] = {};
+  });
+
+  // Helper to calculate match duplicate score (lower is better)
+  const calculateDuplicateScore = (p1: Player, p2: Player, p3: Player, p4: Player): number => {
+    let score = 0;
+    // Partner duplicates: (p1,p2) and (p3,p4)
+    score += (partnerHistory[p1.id][p2.id] || 0) + (partnerHistory[p2.id][p1.id] || 0);
+    score += (partnerHistory[p3.id][p4.id] || 0) + (partnerHistory[p4.id][p3.id] || 0);
+    // Opponent duplicates
+    score += (opponentHistory[p1.id][p3.id] || 0) + (opponentHistory[p1.id][p4.id] || 0);
+    score += (opponentHistory[p2.id][p3.id] || 0) + (opponentHistory[p2.id][p4.id] || 0);
+    return score;
+  };
+
+  // Helper to update history after a match
+  const updateHistory = (p1: Player, p2: Player, p3: Player, p4: Player) => {
+    // Update partner history (bidirectional)
+    partnerHistory[p1.id][p2.id] = (partnerHistory[p1.id][p2.id] || 0) + 1;
+    partnerHistory[p2.id][p1.id] = (partnerHistory[p2.id][p1.id] || 0) + 1;
+    partnerHistory[p3.id][p4.id] = (partnerHistory[p3.id][p4.id] || 0) + 1;
+    partnerHistory[p4.id][p3.id] = (partnerHistory[p4.id][p3.id] || 0) + 1;
+    // Update opponent history (bidirectional)
+    opponentHistory[p1.id][p3.id] = (opponentHistory[p1.id][p3.id] || 0) + 1;
+    opponentHistory[p1.id][p4.id] = (opponentHistory[p1.id][p4.id] || 0) + 1;
+    opponentHistory[p2.id][p3.id] = (opponentHistory[p2.id][p3.id] || 0) + 1;
+    opponentHistory[p2.id][p4.id] = (opponentHistory[p2.id][p4.id] || 0) + 1;
+    opponentHistory[p3.id][p1.id] = (opponentHistory[p3.id][p1.id] || 0) + 1;
+    opponentHistory[p3.id][p2.id] = (opponentHistory[p3.id][p2.id] || 0) + 1;
+    opponentHistory[p4.id][p1.id] = (opponentHistory[p4.id][p1.id] || 0) + 1;
+    opponentHistory[p4.id][p2.id] = (opponentHistory[p4.id][p2.id] || 0) + 1;
+  };
+
   for (let r = 0; r < rounds; r++) {
     const currentRound = startRound + r;
-    
+
     // Sort players by play count to give priority to those who played less
     // Shuffle first for randomness in tie-breaking, then sort by play counts
     const availablePlayers = [...players]
@@ -397,22 +449,40 @@ const generateGenericSchedule = (players: Player[], rounds: number, courts: numb
       .sort((a, b) => a.sort - b.sort)
       .map(({ value }) => value)
       .sort((a, b) => playCounts[a.id] - playCounts[b.id]);
-    
+
+    const usedInRound = new Set<string>();
+
     // Create matches
-    let playerIdx = 0;
     for (let m = 0; m < matchesPerRound; m++) {
-      // Need at least 4 players remaining
-      if (playerIdx + 4 > availablePlayers.length) break;
-      
-      let matchPlayers = [
-        availablePlayers[playerIdx++],
-        availablePlayers[playerIdx++],
-        availablePlayers[playerIdx++],
-        availablePlayers[playerIdx++]
-      ];
+      // Get available players for this match
+      const remaining = availablePlayers.filter(p => !usedInRound.has(p.id));
+      if (remaining.length < 4) break;
+
+      // Find best 4-player combination with minimum duplicate score
+      let bestMatch: Player[] | null = null;
+      let bestScore = Infinity;
+
+      // Try multiple random combinations and pick the best one
+      const attempts = Math.min(20, Math.floor(remaining.length * (remaining.length - 1) / 2));
+      for (let attempt = 0; attempt < attempts; attempt++) {
+        // Shuffle and pick first 4
+        const shuffled = [...remaining].sort(() => Math.random() - 0.5);
+        const candidate = shuffled.slice(0, 4);
+        const score = calculateDuplicateScore(candidate[0], candidate[1], candidate[2], candidate[3]);
+
+        if (score < bestScore) {
+          bestScore = score;
+          bestMatch = candidate;
+        }
+
+        // Perfect match found (no duplicates)
+        if (score === 0) break;
+      }
+
+      if (!bestMatch) break;
 
       // Use NTRP balancing (which also handles MM vs FF avoidance)
-      matchPlayers = balanceTeamsNTRP(matchPlayers);
+      const matchPlayers = balanceTeamsNTRP(bestMatch);
 
       const p1 = matchPlayers[0];
       const p2 = matchPlayers[1];
@@ -429,10 +499,16 @@ const generateGenericSchedule = (players: Player[], rounds: number, courts: numb
         score2: null,
       });
 
+      // Mark players as used in this round
+      [p1, p2, p3, p4].forEach(p => usedInRound.add(p.id));
+
+      // Update counts and history
       playCounts[p1.id]++;
       playCounts[p2.id]++;
       playCounts[p3.id]++;
       playCounts[p4.id]++;
+
+      updateHistory(p1, p2, p3, p4);
     }
   }
 
