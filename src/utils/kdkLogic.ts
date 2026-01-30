@@ -1,5 +1,39 @@
 import { Player, Match } from '../types';
 
+// Fixed schedules for traditional KDK (mathematically optimized, no partner duplicates in 4 rounds)
+const FIXED_SCHEDULES: Record<number, number[][][]> = {
+  8: [
+    // Round 1
+    [[0, 1], [2, 3]], [[4, 5], [6, 7]],
+    // Round 2
+    [[0, 4], [2, 6]], [[1, 5], [3, 7]],
+    // Round 3
+    [[0, 2], [5, 7]], [[1, 3], [4, 6]],
+    // Round 4
+    [[0, 7], [3, 6]], [[1, 4], [2, 5]]
+  ],
+  12: [
+    // Round 1
+    [[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8, 9], [10, 11]],
+    // Round 2
+    [[0, 4], [2, 6]], [[1, 5], [3, 7]], [[8, 10], [9, 11]],
+    // Round 3
+    [[0, 8], [2, 9]], [[1, 6], [3, 10]], [[4, 7], [5, 11]],
+    // Round 4
+    [[0, 2], [1, 3]], [[4, 6], [5, 7]], [[8, 11], [9, 10]]
+  ],
+  16: [
+    // Round 1
+    [[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8, 9], [10, 11]], [[12, 13], [14, 15]],
+    // Round 2
+    [[0, 4], [8, 12]], [[1, 5], [9, 13]], [[2, 6], [10, 14]], [[3, 7], [11, 15]],
+    // Round 3
+    [[0, 2], [5, 7]], [[1, 3], [4, 6]], [[8, 10], [13, 15]], [[9, 11], [12, 14]],
+    // Round 4
+    [[0, 8], [1, 9]], [[2, 10], [3, 11]], [[4, 12], [5, 13]], [[6, 14], [7, 15]]
+  ]
+};
+
 export const generateKDKMatches = (players: Player[], courts: number = 1, targetRounds: number = 4, mixedDoubles: boolean = false, strictGenderMode: boolean = false): Match[] => {
   const activePlayers = players.filter(p => p.active);
   const playerCount = activePlayers.length;
@@ -16,8 +50,12 @@ export const generateKDKMatches = (players: Player[], courts: number = 1, target
     return generateMixedDoublesSchedule(activePlayers, targetRounds, courts);
   }
 
-  // Use generic schedule with duplicate minimization for all player counts
-  // This ensures partner/opponent history tracking works properly
+  // Use fixed pattern for 8/12/16 players (traditional KDK)
+  if (FIXED_SCHEDULES[playerCount]) {
+    return generateWithFixedPattern(activePlayers, targetRounds, courts);
+  }
+
+  // Use generic schedule for other player counts
   return generateGenericSchedule(activePlayers, targetRounds, courts);
 };
 
@@ -80,6 +118,283 @@ const balanceTeamsNTRP = (players: Player[]): Player[] => {
   combos.sort((a, b) => a.diff - b.diff);
 
   return combos[0].teams;
+};
+
+// Helper to create matches from fixed pattern indices
+const createMatchesFromPattern = (
+  players: Player[],
+  schedule: number[][][],
+  courts: number,
+  partnerHistory: Record<string, Record<string, number>>
+): Match[] => {
+  const matchesPerRound = players.length / 4;
+
+  return schedule.map((matchIds, index) => {
+    const round = Math.floor(index / matchesPerRound) + 1;
+    const matchInRound = index % matchesPerRound;
+    const courtNumber = (matchInRound % courts) + 1;
+
+    // Get the 4 players for this match
+    const fourPlayers = [
+      players[matchIds[0][0]],
+      players[matchIds[0][1]],
+      players[matchIds[1][0]],
+      players[matchIds[1][1]]
+    ];
+
+    // Apply NTRP balancing with partner history consideration
+    const balanced = balanceTeamsNTRPWithHistory(fourPlayers, partnerHistory);
+
+    return {
+      id: `match-fixed-${players.length}-${index}`,
+      round,
+      courtNumber,
+      team1: [balanced[0].id, balanced[1].id] as [string, string],
+      team2: [balanced[2].id, balanced[3].id] as [string, string],
+      score1: null,
+      score2: null,
+    };
+  });
+};
+
+// Balance teams considering both NTRP and partner history
+const balanceTeamsNTRPWithHistory = (
+  players: Player[],
+  partnerHistory: Record<string, Record<string, number>>
+): Player[] => {
+  if (players.length !== 4) return players;
+
+  const getNTRP = (p: Player) => p.ntrp || 3.0;
+
+  const getPartnerDuplicates = (p1: Player, p2: Player): number => {
+    return (partnerHistory[p1.id]?.[p2.id] || 0) + (partnerHistory[p2.id]?.[p1.id] || 0);
+  };
+
+  // 2 Men + 2 Women case
+  const men = players.filter(p => p.gender === 'M');
+  const women = players.filter(p => p.gender === 'F');
+
+  if (men.length === 2 && women.length === 2) {
+    const [m1, m2] = men;
+    const [w1, w2] = women;
+
+    const diffA = Math.abs((getNTRP(m1) + getNTRP(w1)) - (getNTRP(m2) + getNTRP(w2)));
+    const dupA = getPartnerDuplicates(m1, w1) + getPartnerDuplicates(m2, w2);
+
+    const diffB = Math.abs((getNTRP(m1) + getNTRP(w2)) - (getNTRP(m2) + getNTRP(w1)));
+    const dupB = getPartnerDuplicates(m1, w2) + getPartnerDuplicates(m2, w1);
+
+    // Prioritize less duplicates, then NTRP balance
+    const scoreA = dupA * 100 + diffA;
+    const scoreB = dupB * 100 + diffB;
+
+    return scoreA <= scoreB ? [m1, w1, m2, w2] : [m1, w2, m2, w1];
+  }
+
+  // General case
+  const p = players;
+  const combos = [
+    { teams: [p[0], p[1], p[2], p[3]], pair1: [p[0], p[1]], pair2: [p[2], p[3]] },
+    { teams: [p[0], p[2], p[1], p[3]], pair1: [p[0], p[2]], pair2: [p[1], p[3]] },
+    { teams: [p[0], p[3], p[1], p[2]], pair1: [p[0], p[3]], pair2: [p[1], p[2]] }
+  ].map(combo => ({
+    ...combo,
+    ntpDiff: Math.abs(
+      (getNTRP(combo.pair1[0]) + getNTRP(combo.pair1[1])) -
+      (getNTRP(combo.pair2[0]) + getNTRP(combo.pair2[1]))
+    ),
+    duplicates: getPartnerDuplicates(combo.pair1[0], combo.pair1[1]) +
+                getPartnerDuplicates(combo.pair2[0], combo.pair2[1])
+  }));
+
+  // Sort by duplicates first, then NTRP diff
+  combos.sort((a, b) => {
+    if (a.duplicates !== b.duplicates) return a.duplicates - b.duplicates;
+    return a.ntpDiff - b.ntpDiff;
+  });
+
+  return combos[0].teams;
+};
+
+// Update partner/opponent history from a match
+const updateHistoryFromMatch = (
+  match: Match,
+  partnerHistory: Record<string, Record<string, number>>,
+  opponentHistory: Record<string, Record<string, number>>
+) => {
+  const [p1Id, p2Id] = match.team1;
+  const [p3Id, p4Id] = match.team2;
+
+  // Partner history (bidirectional)
+  partnerHistory[p1Id][p2Id] = (partnerHistory[p1Id][p2Id] || 0) + 1;
+  partnerHistory[p2Id][p1Id] = (partnerHistory[p2Id][p1Id] || 0) + 1;
+  partnerHistory[p3Id][p4Id] = (partnerHistory[p3Id][p4Id] || 0) + 1;
+  partnerHistory[p4Id][p3Id] = (partnerHistory[p4Id][p3Id] || 0) + 1;
+
+  // Opponent history (bidirectional)
+  opponentHistory[p1Id][p3Id] = (opponentHistory[p1Id][p3Id] || 0) + 1;
+  opponentHistory[p1Id][p4Id] = (opponentHistory[p1Id][p4Id] || 0) + 1;
+  opponentHistory[p2Id][p3Id] = (opponentHistory[p2Id][p3Id] || 0) + 1;
+  opponentHistory[p2Id][p4Id] = (opponentHistory[p2Id][p4Id] || 0) + 1;
+  opponentHistory[p3Id][p1Id] = (opponentHistory[p3Id][p1Id] || 0) + 1;
+  opponentHistory[p3Id][p2Id] = (opponentHistory[p3Id][p2Id] || 0) + 1;
+  opponentHistory[p4Id][p1Id] = (opponentHistory[p4Id][p1Id] || 0) + 1;
+  opponentHistory[p4Id][p2Id] = (opponentHistory[p4Id][p2Id] || 0) + 1;
+};
+
+// Generate matches using fixed pattern + additional rounds with history
+const generateWithFixedPattern = (players: Player[], targetRounds: number, courts: number): Match[] => {
+  const playerCount = players.length;
+  const schedule = FIXED_SCHEDULES[playerCount];
+
+  if (!schedule) {
+    return generateGenericSchedule(players, targetRounds, courts);
+  }
+
+  // Initialize history tracking
+  const partnerHistory: Record<string, Record<string, number>> = {};
+  const opponentHistory: Record<string, Record<string, number>> = {};
+  const playCounts: Record<string, number> = {};
+  players.forEach(p => {
+    partnerHistory[p.id] = {};
+    opponentHistory[p.id] = {};
+    playCounts[p.id] = 0;
+  });
+
+  const matches: Match[] = [];
+
+  // Phase 1: Use fixed pattern for first 4 rounds (or less if targetRounds < 4)
+  const fixedRounds = Math.min(targetRounds, 4);
+  const matchesPerRound = playerCount / 4;
+  const fixedMatchCount = fixedRounds * matchesPerRound;
+
+  // Create matches from fixed pattern
+  const fixedScheduleSlice = schedule.slice(0, fixedMatchCount);
+  const fixedMatches = createMatchesFromPattern(players, fixedScheduleSlice, courts, partnerHistory);
+  matches.push(...fixedMatches);
+
+  // Update history from fixed matches
+  fixedMatches.forEach(match => {
+    updateHistoryFromMatch(match, partnerHistory, opponentHistory);
+    // Update play counts
+    [...match.team1, ...match.team2].forEach(id => {
+      playCounts[id] = (playCounts[id] || 0) + 1;
+    });
+  });
+
+  // Phase 2: Generate additional rounds with history-based duplicate minimization
+  if (targetRounds > 4) {
+    const additionalRounds = targetRounds - 4;
+    const additionalMatches = generateGenericScheduleWithHistory(
+      players,
+      additionalRounds,
+      courts,
+      5, // Start from round 5
+      partnerHistory,
+      opponentHistory,
+      playCounts
+    );
+    matches.push(...additionalMatches);
+  }
+
+  return matches;
+};
+
+// Generic schedule with external history (for additional rounds after fixed pattern)
+const generateGenericScheduleWithHistory = (
+  players: Player[],
+  rounds: number,
+  courts: number,
+  startRound: number,
+  partnerHistory: Record<string, Record<string, number>>,
+  opponentHistory: Record<string, Record<string, number>>,
+  playCounts: Record<string, number>
+): Match[] => {
+  const matches: Match[] = [];
+  const matchesPerRound = Math.floor(players.length / 4);
+
+  const calculateDuplicateScore = (p1: Player, p2: Player, p3: Player, p4: Player): number => {
+    let score = 0;
+    score += (partnerHistory[p1.id][p2.id] || 0) + (partnerHistory[p2.id][p1.id] || 0);
+    score += (partnerHistory[p3.id][p4.id] || 0) + (partnerHistory[p4.id][p3.id] || 0);
+    score += (opponentHistory[p1.id][p3.id] || 0) + (opponentHistory[p1.id][p4.id] || 0);
+    score += (opponentHistory[p2.id][p3.id] || 0) + (opponentHistory[p2.id][p4.id] || 0);
+    return score;
+  };
+
+  const updateHistory = (p1: Player, p2: Player, p3: Player, p4: Player) => {
+    partnerHistory[p1.id][p2.id] = (partnerHistory[p1.id][p2.id] || 0) + 1;
+    partnerHistory[p2.id][p1.id] = (partnerHistory[p2.id][p1.id] || 0) + 1;
+    partnerHistory[p3.id][p4.id] = (partnerHistory[p3.id][p4.id] || 0) + 1;
+    partnerHistory[p4.id][p3.id] = (partnerHistory[p4.id][p3.id] || 0) + 1;
+    opponentHistory[p1.id][p3.id] = (opponentHistory[p1.id][p3.id] || 0) + 1;
+    opponentHistory[p1.id][p4.id] = (opponentHistory[p1.id][p4.id] || 0) + 1;
+    opponentHistory[p2.id][p3.id] = (opponentHistory[p2.id][p3.id] || 0) + 1;
+    opponentHistory[p2.id][p4.id] = (opponentHistory[p2.id][p4.id] || 0) + 1;
+    opponentHistory[p3.id][p1.id] = (opponentHistory[p3.id][p1.id] || 0) + 1;
+    opponentHistory[p3.id][p2.id] = (opponentHistory[p3.id][p2.id] || 0) + 1;
+    opponentHistory[p4.id][p1.id] = (opponentHistory[p4.id][p1.id] || 0) + 1;
+    opponentHistory[p4.id][p2.id] = (opponentHistory[p4.id][p2.id] || 0) + 1;
+  };
+
+  for (let r = 0; r < rounds; r++) {
+    const currentRound = startRound + r;
+
+    const availablePlayers = [...players]
+      .map(value => ({ value, sort: Math.random() }))
+      .sort((a, b) => a.sort - b.sort)
+      .map(({ value }) => value)
+      .sort((a, b) => playCounts[a.id] - playCounts[b.id]);
+
+    const usedInRound = new Set<string>();
+
+    for (let m = 0; m < matchesPerRound; m++) {
+      const remaining = availablePlayers.filter(p => !usedInRound.has(p.id));
+      if (remaining.length < 4) break;
+
+      let bestMatch: Player[] | null = null;
+      let bestScore = Infinity;
+
+      const attempts = Math.min(30, Math.floor(remaining.length * (remaining.length - 1) / 2));
+      for (let attempt = 0; attempt < attempts; attempt++) {
+        const shuffled = [...remaining].sort(() => Math.random() - 0.5);
+        const candidate = shuffled.slice(0, 4);
+        const score = calculateDuplicateScore(candidate[0], candidate[1], candidate[2], candidate[3]);
+
+        if (score < bestScore) {
+          bestScore = score;
+          bestMatch = candidate;
+        }
+
+        if (score === 0) break;
+      }
+
+      if (!bestMatch) break;
+
+      const matchPlayers = balanceTeamsNTRPWithHistory(bestMatch, partnerHistory);
+
+      const [p1, p2, p3, p4] = matchPlayers;
+
+      matches.push({
+        id: `match-extra-${currentRound}-${m}`,
+        round: currentRound,
+        courtNumber: (m % courts) + 1,
+        team1: [p1.id, p2.id],
+        team2: [p3.id, p4.id],
+        score1: null,
+        score2: null,
+      });
+
+      [p1, p2, p3, p4].forEach(p => usedInRound.add(p.id));
+      playCounts[p1.id]++;
+      playCounts[p2.id]++;
+      playCounts[p3.id]++;
+      playCounts[p4.id]++;
+      updateHistory(p1, p2, p3, p4);
+    }
+  }
+
+  return matches;
 };
 
 const generateMixedDoublesSchedule = (players: Player[], rounds: number, courts: number, startRound: number = 1): Match[] => {
