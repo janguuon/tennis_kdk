@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Match, Player } from '../types';
 import { CheckCircle2 } from 'lucide-react';
 
@@ -49,9 +49,16 @@ const MatchCard: React.FC<{
   getPlayerName: (id: string) => string;
   onUpdateScore: (id: string, s1: number, s2: number) => void;
 }> = ({ match, getPlayerName, onUpdateScore }) => {
-  const [s1, setS1] = useState(match.score1?.toString() || '');
-  const [s2, setS2] = useState(match.score2?.toString() || '');
+  const [s1, setS1] = useState(match.score1 !== null ? match.score1.toString() : '');
+  const [s2, setS2] = useState(match.score2 !== null ? match.score2.toString() : '');
   const [isEditing, setIsEditing] = useState(match.score1 === null);
+
+  // Sync state when match prop changes
+  useEffect(() => {
+    setS1(match.score1 !== null ? match.score1.toString() : '');
+    setS2(match.score2 !== null ? match.score2.toString() : '');
+    setIsEditing(match.score1 === null);
+  }, [match.id, match.score1, match.score2]);
 
   const handleSave = () => {
     if (s1 !== '' && s2 !== '') {

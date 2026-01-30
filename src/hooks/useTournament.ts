@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Player, Match, PlayerStats } from '../types';
 import { generateKDKMatches } from '../utils/kdkLogic';
 
@@ -13,32 +13,47 @@ interface TournamentState {
   strictGenderMode: boolean;
 }
 
+const DEFAULT_STATE: TournamentState = {
+  players: [],
+  matches: [],
+  courts: 1,
+  rounds: 4,
+  mixedDoubles: false,
+  strictGenderMode: false
+};
+
 export const useTournament = () => {
   const [state, setState] = useState<TournamentState>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
-      const parsed = JSON.parse(saved);
-      // Ensure backward compatibility
-      return {
-        ...parsed,
-        rounds: parsed.rounds || 4,
-        courts: parsed.courts || 1,
-        mixedDoubles: parsed.mixedDoubles || false,
-        strictGenderMode: parsed.strictGenderMode || false
-      };
+      try {
+        const parsed = JSON.parse(saved);
+        // Ensure backward compatibility
+        return {
+          ...parsed,
+          rounds: parsed.rounds || 4,
+          courts: parsed.courts || 1,
+          mixedDoubles: parsed.mixedDoubles || false,
+          strictGenderMode: parsed.strictGenderMode || false
+        };
+      } catch (e) {
+        console.error('localStorage 파싱 오류:', e);
+        return DEFAULT_STATE;
+      }
     }
-    return {
-      players: [],
-      matches: [],
-      courts: 1,
-      rounds: 4,
-      mixedDoubles: false,
-      strictGenderMode: false
-    };
+    return DEFAULT_STATE;
   });
 
+  // Debounced localStorage save with error handling
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) {
+        console.error('localStorage 저장 오류:', e);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
   }, [state]);
 
   const addPlayer = (name: string, gender: 'M' | 'F' = 'M', ntrp: number = 3.0) => {
@@ -117,52 +132,54 @@ export const useTournament = () => {
       }
   }
 
-  // Calculate Stats
-  const stats: PlayerStats[] = state.players.map(player => {
-    let matchesPlayed = 0;
-    let wins = 0;
-    let losses = 0;
-    let draws = 0;
-    let pointsFor = 0;
-    let pointsAgainst = 0;
+  // Calculate Stats with useMemo for performance
+  const stats: PlayerStats[] = useMemo(() => {
+    return state.players.map(player => {
+      let matchesPlayed = 0;
+      let wins = 0;
+      let losses = 0;
+      let draws = 0;
+      let pointsFor = 0;
+      let pointsAgainst = 0;
 
-    state.matches.forEach(match => {
-      if (match.score1 === null || match.score2 === null) return;
+      state.matches.forEach(match => {
+        if (match.score1 === null || match.score2 === null) return;
 
-      const isTeam1 = match.team1.includes(player.id);
-      const isTeam2 = match.team2.includes(player.id);
+        const isTeam1 = match.team1.includes(player.id);
+        const isTeam2 = match.team2.includes(player.id);
 
-      if (isTeam1 || isTeam2) {
-        matchesPlayed++;
-        
-        const myScore = isTeam1 ? match.score1 : match.score2;
-        const oppScore = isTeam1 ? match.score2 : match.score1;
+        if (isTeam1 || isTeam2) {
+          matchesPlayed++;
 
-        pointsFor += myScore;
-        pointsAgainst += oppScore;
+          const myScore = isTeam1 ? match.score1 : match.score2;
+          const oppScore = isTeam1 ? match.score2 : match.score1;
 
-        if (myScore > oppScore) wins++;
-        else if (myScore < oppScore) losses++;
-        else draws++;
-      }
+          pointsFor += myScore;
+          pointsAgainst += oppScore;
+
+          if (myScore > oppScore) wins++;
+          else if (myScore < oppScore) losses++;
+          else draws++;
+        }
+      });
+
+      return {
+        playerId: player.id,
+        matchesPlayed,
+        wins,
+        losses,
+        draws,
+        pointsFor,
+        pointsAgainst,
+        pointDiff: pointsFor - pointsAgainst,
+        winRate: matchesPlayed > 0 ? wins / matchesPlayed : 0
+      };
+    }).sort((a, b) => {
+      if (a.wins !== b.wins) return b.wins - a.wins;
+      if (a.pointDiff !== b.pointDiff) return b.pointDiff - a.pointDiff;
+      return b.pointsFor - a.pointsFor;
     });
-
-    return {
-      playerId: player.id,
-      matchesPlayed,
-      wins,
-      losses,
-      draws,
-      pointsFor,
-      pointsAgainst,
-      pointDiff: pointsFor - pointsAgainst,
-      winRate: matchesPlayed > 0 ? wins / matchesPlayed : 0
-    };
-  }).sort((a, b) => {
-    if (a.wins !== b.wins) return b.wins - a.wins;
-    if (a.pointDiff !== b.pointDiff) return b.pointDiff - a.pointDiff;
-    return b.pointsFor - a.pointsFor;
-  });
+  }, [state.players, state.matches]);
 
   return {
     players: state.players,

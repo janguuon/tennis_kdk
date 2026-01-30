@@ -56,7 +56,7 @@ const balanceTeamsNTRP = (players: Player[]): Player[] => {
   const getNTRP = (p: Player) => p.ntrp || 3.0;
 
   // Check for 2 Men and 2 Women case (Mixed Doubles preference)
-  const men = players.filter(p => p.gender === 'M' || !p.gender);
+  const men = players.filter(p => p.gender === 'M');
   const women = players.filter(p => p.gender === 'F');
 
   if (men.length === 2 && women.length === 2) {
@@ -188,28 +188,39 @@ const generateMixedDoublesSchedule = (players: Player[], rounds: number, courts:
   for (let r = 0; r < rounds; r++) {
     const currentRound = startRound + r;
 
-    // 1. Sort and Separate
-    const men = players.filter(p => p.gender === 'M' || !p.gender)
-      .map(value => ({ value, sort: Math.random() }))
-      .sort((a, b) => a.sort - b.sort)
-      .map(({ value }) => value)
-      .sort((a, b) => playCounts[a.id] - playCounts[b.id]);
+    // 1. Sort and Separate - combine playCount priority with random tiebreaker
+    const men = players.filter(p => p.gender === 'M')
+      .map(value => ({
+        value,
+        priority: playCounts[value.id] + Math.random() * 0.5
+      }))
+      .sort((a, b) => a.priority - b.priority)
+      .map(({ value }) => value);
 
     const women = players.filter(p => p.gender === 'F')
-      .map(value => ({ value, sort: Math.random() }))
-      .sort((a, b) => a.sort - b.sort)
-      .map(({ value }) => value)
-      .sort((a, b) => playCounts[a.id] - playCounts[b.id]);
+      .map(value => ({
+        value,
+        priority: playCounts[value.id] + Math.random() * 0.5
+      }))
+      .sort((a, b) => a.priority - b.priority)
+      .map(({ value }) => value);
 
     const roundMatches: Player[][] = [];
 
     // 2. Form Mixed Doubles (M, F) vs (M, F)
     let mIdx = 0;
     let wIdx = 0;
-    
-    while (mIdx + 1 < men.length && wIdx + 1 < women.length) {
+
+    // Need at least 2 men and 2 women for each mixed doubles match
+    while (mIdx + 2 <= men.length && wIdx + 2 <= women.length) {
       if (roundMatches.length >= matchesPerRound) break;
-      roundMatches.push([men[mIdx++], women[wIdx++], men[mIdx++], women[wIdx++]]);
+      const m1 = men[mIdx];
+      const w1 = women[wIdx];
+      const m2 = men[mIdx + 1];
+      const w2 = women[wIdx + 1];
+      roundMatches.push([m1, w1, m2, w2]);
+      mIdx += 2;
+      wIdx += 2;
     }
 
     // 3. Form remaining matches with leftovers
@@ -219,8 +230,14 @@ const generateMixedDoublesSchedule = (players: Player[], rounds: number, courts:
     ];
 
     let lIdx = 0;
-    while (roundMatches.length < matchesPerRound && lIdx + 3 < leftovers.length) {
-       roundMatches.push([leftovers[lIdx++], leftovers[lIdx++], leftovers[lIdx++], leftovers[lIdx++]]);
+    // Need at least 4 players for a match
+    while (roundMatches.length < matchesPerRound && lIdx + 4 <= leftovers.length) {
+      const p1 = leftovers[lIdx];
+      const p2 = leftovers[lIdx + 1];
+      const p3 = leftovers[lIdx + 2];
+      const p4 = leftovers[lIdx + 3];
+      roundMatches.push([p1, p2, p3, p4]);
+      lIdx += 4;
     }
 
     // 4. Convert to Match objects
@@ -262,7 +279,7 @@ const generateStrictGenderSchedule = (players: Player[], rounds: number, courts:
       .sort((a, b) => playCounts[a.id] - playCounts[b.id]); // Then strict play count sort
 
     // Separate by gender
-    const men = sortedPlayers.filter(p => p.gender === 'M' || !p.gender);
+    const men = sortedPlayers.filter(p => p.gender === 'M');
     const women = sortedPlayers.filter(p => p.gender === 'F');
 
     // We will track used players in this round to prevent double booking
@@ -307,7 +324,7 @@ const generateStrictGenderSchedule = (players: Player[], rounds: number, courts:
         const availMen = men.filter(isAvailable);
         const availWomen = women.filter(isAvailable);
 
-        if (p.gender === 'M' || !p.gender) {
+        if (p.gender === 'M') {
           // Player is Male
           // Can form MD? Needs 3 other men (total 4)
           if (availMen.length >= 4) options.push('MD');
@@ -326,27 +343,24 @@ const generateStrictGenderSchedule = (players: Player[], rounds: number, courts:
           const type = options[Math.floor(Math.random() * options.length)];
 
           if (type === 'XD') {
-            // Ensure p is included
-            // If p is M: take p, 1 other M, 2 W
-            // If p is W: take 2 M, p, 1 other W
-            // Actually, since our 'avail' lists are sorted by priority, 
-            // and 'p' is the highest priority available player encountered so far,
-            // 'p' will definitely be availMen[0] or availWomen[0]??
-            // Not necessarily if we skipped someone. 
-            // BUT, since we iterate sortedPlayers, 'p' is the *first* available one we haven't skipped yet.
-            // So 'p' should be the top of their gender list?
-            // Yes, because if there was an available M before 'p' (and p is M), we would have processed them.
-            // So we can just call addMatch with top available people?
-            // Wait, if p is M, and we skipped a W before who couldn't form a match...
-            // Then p is top M.
-            // So standard addMatch logic (taking from top of lists) works fine 
-            // as long as the types align.
-            
-            addMatch(availMen[0], availMen[1], availWomen[0], availWomen[1]);
+            // Ensure p is included in the match
+            if (p.gender === 'M') {
+              // p is Male: take p, 1 other man, and 2 women
+              const otherMen = availMen.filter(m => m.id !== p.id);
+              addMatch(p, otherMen[0], availWomen[0], availWomen[1]);
+            } else {
+              // p is Female: take 2 men, p, and 1 other woman
+              const otherWomen = availWomen.filter(w => w.id !== p.id);
+              addMatch(availMen[0], availMen[1], p, otherWomen[0]);
+            }
           } else if (type === 'MD') {
-            addMatch(availMen[0], availMen[1], availMen[2], availMen[3]);
+            // Ensure p is included in men's doubles
+            const otherMen = availMen.filter(m => m.id !== p.id);
+            addMatch(p, otherMen[0], otherMen[1], otherMen[2]);
           } else if (type === 'WD') {
-            addMatch(availWomen[0], availWomen[1], availWomen[2], availWomen[3]);
+            // Ensure p is included in women's doubles
+            const otherWomen = availWomen.filter(w => w.id !== p.id);
+            addMatch(p, otherWomen[0], otherWomen[1], otherWomen[2]);
           }
 
           matchFormed = true;
@@ -387,7 +401,8 @@ const generateGenericSchedule = (players: Player[], rounds: number, courts: numb
     // Create matches
     let playerIdx = 0;
     for (let m = 0; m < matchesPerRound; m++) {
-      if (playerIdx + 3 >= availablePlayers.length) break;
+      // Need at least 4 players remaining
+      if (playerIdx + 4 > availablePlayers.length) break;
       
       let matchPlayers = [
         availablePlayers[playerIdx++],

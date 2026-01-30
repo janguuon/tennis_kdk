@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Trophy, Users, RefreshCw, Trash2, Calendar } from 'lucide-react';
 import { useTournament } from '../hooks/useTournament';
 import { PlayerList } from '../components/PlayerList';
@@ -27,6 +28,10 @@ export function KDKPage() {
   } = useTournament();
 
   const hasMatches = matches.length > 0;
+  const activePlayerCount = useMemo(
+    () => players.filter(p => p.active).length,
+    [players]
+  );
 
   return (
     <div className="min-h-screen bg-gray-100 pb-10">
@@ -152,17 +157,17 @@ export function KDKPage() {
               
               <button
                 onClick={generateMatches}
-                disabled={players.filter(p => p.active).length < 4 || hasMatches}
+                disabled={activePlayerCount < 4 || hasMatches}
                 className={`w-full py-3 px-4 rounded-md font-bold text-white flex items-center justify-center gap-2 transition-colors
-                  ${players.filter(p => p.active).length < 4 || hasMatches
-                    ? 'bg-gray-400 cursor-not-allowed' 
+                  ${activePlayerCount < 4 || hasMatches
+                    ? 'bg-gray-400 cursor-not-allowed'
                     : 'bg-green-600 hover:bg-green-700 shadow-md hover:shadow-lg'
                   }`}
               >
                 {hasMatches ? '매치 생성 완료' : '매치 생성'}
               </button>
-              
-              {players.filter(p => p.active).length < 4 && (
+
+              {activePlayerCount < 4 && (
                 <p className="text-red-500 text-xs mt-2 text-center">
                   * 최소 4명의 활성 플레이어가 필요합니다
                 </p>
