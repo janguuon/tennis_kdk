@@ -34,3 +34,13 @@ export interface PlayerStats {
   pointDiff: number;
   winRate: number;
 }
+
+export interface RoundRest {
+  round: number;
+  restingPlayerIds: string[];
+}
+
+export interface MatchGenerationResult {
+  matches: Match[];
+  roundRests: RoundRest[];
+}

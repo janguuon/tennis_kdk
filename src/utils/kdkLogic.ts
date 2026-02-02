@@ -1,4 +1,14 @@
-import { Player, Match } from '../types';
+import { Player, Match, RoundRest, MatchGenerationResult } from '../types';
+
+// Fisher-Yates shuffle
+const shuffleArray = <T>(array: T[]): T[] => {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+};
 
 // Fixed schedules for traditional KDK (mathematically optimized, no partner duplicates in 4 rounds)
 const FIXED_SCHEDULES: Record<number, number[][][]> = {
@@ -34,29 +44,48 @@ const FIXED_SCHEDULES: Record<number, number[][][]> = {
   ]
 };
 
-export const generateKDKMatches = (players: Player[], courts: number = 1, targetRounds: number = 4, mixedDoubles: boolean = false, strictGenderMode: boolean = false): Match[] => {
+export const generateKDKMatches = (
+  players: Player[],
+  courts: number = 1,
+  targetRounds: number = 4,
+  mixedDoubles: boolean = false,
+  strictGenderMode: boolean = false,
+  useRandomWithAvoidance: boolean = false
+): MatchGenerationResult => {
   const activePlayers = players.filter(p => p.active);
   const playerCount = activePlayers.length;
 
   // Basic validation
-  if (playerCount < 4) return [];
+  if (playerCount < 4) return { matches: [], roundRests: [] };
 
+  // 새로운 랜덤 매칭 모드
+  if (useRandomWithAvoidance) {
+    if (strictGenderMode) {
+      // 성별모드 + 랜덤: 성별 제약 + 파트너 중복 방지
+      return generateRandomWithGenderMode(activePlayers, targetRounds, courts);
+    } else if (mixedDoubles) {
+      // 혼합복식 + 랜덤: 혼복 제약 + 파트너 중복 방지
+      return generateRandomMixedDoubles(activePlayers, targetRounds, courts);
+    } else {
+      // 순수 랜덤: 파트너 중복 방지만
+      return generateRandomWithPartnerAvoidance(activePlayers, targetRounds, courts);
+    }
+  }
+
+  // 기존 로직들은 roundRests가 빈 배열
   if (strictGenderMode) {
-    return generateStrictGenderSchedule(activePlayers, targetRounds, courts);
+    return { matches: generateStrictGenderSchedule(activePlayers, targetRounds, courts), roundRests: [] };
   }
 
   if (mixedDoubles) {
-    // Mixed doubles mode: Skip fixed patterns and use specialized generation
-    return generateMixedDoublesSchedule(activePlayers, targetRounds, courts);
+    return { matches: generateMixedDoublesSchedule(activePlayers, targetRounds, courts), roundRests: [] };
   }
 
-  // Use fixed pattern for 8/12/16 players (traditional KDK)
   if (FIXED_SCHEDULES[playerCount]) {
-    return generateWithFixedPattern(activePlayers, targetRounds, courts);
+    return { matches: generateWithFixedPattern(activePlayers, targetRounds, courts), roundRests: [] };
   }
 
-  // Use generic schedule for other player counts
-  return generateGenericSchedule(activePlayers, targetRounds, courts);
+  return { matches: generateGenericSchedule(activePlayers, targetRounds, courts), roundRests: [] };
 };
 
 const balanceTeamsNTRP = (players: Player[]): Player[] => {
@@ -828,4 +857,479 @@ const generateGenericSchedule = (players: Player[], rounds: number, courts: numb
   }
 
   return matches;
+};
+
+// ============================================================
+// 중복 파트너 방지형 랜덤 매칭 알고리즘
+// ============================================================
+
+interface HistoryState {
+  partnerHistory: Record<string, Record<string, number>>;
+  opponentHistory: Record<string, Record<string, number>>;
+  playCounts: Record<string, number>;
+  restCounts: Record<string, number>;
+}
+
+const initializeHistory = (players: Player[]): HistoryState => {
+  const partnerHistory: Record<string, Record<string, number>> = {};
+  const opponentHistory: Record<string, Record<string, number>> = {};
+  const playCounts: Record<string, number> = {};
+  const restCounts: Record<string, number> = {};
+
+  players.forEach(p => {
+    partnerHistory[p.id] = {};
+    opponentHistory[p.id] = {};
+    playCounts[p.id] = 0;
+    restCounts[p.id] = 0;
+  });
+
+  return { partnerHistory, opponentHistory, playCounts, restCounts };
+};
+
+const updateHistoryState = (
+  history: HistoryState,
+  team1: [string, string],
+  team2: [string, string]
+): void => {
+  const [p1, p2] = team1;
+  const [p3, p4] = team2;
+
+  // Partner history (양방향)
+  history.partnerHistory[p1][p2] = (history.partnerHistory[p1][p2] || 0) + 1;
+  history.partnerHistory[p2][p1] = (history.partnerHistory[p2][p1] || 0) + 1;
+  history.partnerHistory[p3][p4] = (history.partnerHistory[p3][p4] || 0) + 1;
+  history.partnerHistory[p4][p3] = (history.partnerHistory[p4][p3] || 0) + 1;
+
+  // Opponent history
+  [p1, p2].forEach(a => {
+    [p3, p4].forEach(b => {
+      history.opponentHistory[a][b] = (history.opponentHistory[a][b] || 0) + 1;
+      history.opponentHistory[b][a] = (history.opponentHistory[b][a] || 0) + 1;
+    });
+  });
+
+  // Play counts
+  [p1, p2, p3, p4].forEach(id => {
+    history.playCounts[id]++;
+  });
+};
+
+const getPartnerDuplicateCount = (
+  history: HistoryState,
+  p1Id: string,
+  p2Id: string
+): number => {
+  return (history.partnerHistory[p1Id]?.[p2Id] || 0);
+};
+
+// 대기자 선정: 가장 많이 경기한 선수들이 휴식
+const selectRestingPlayers = (
+  players: Player[],
+  history: HistoryState,
+  randomnessFactor: number = 0.2
+): Player[] => {
+  const playersPerRound = Math.floor(players.length / 4) * 4;
+  const restingCount = players.length - playersPerRound;
+
+  if (restingCount === 0) return [];
+
+  // 경기 횟수가 많은 순으로 정렬 (랜덤성 추가)
+  const scoredPlayers = players.map(p => ({
+    player: p,
+    score: history.playCounts[p.id] + (Math.random() * randomnessFactor * 2)
+  }));
+
+  scoredPlayers.sort((a, b) => b.score - a.score);
+
+  return scoredPlayers.slice(0, restingCount).map(sp => sp.player);
+};
+
+// 매치 점수 계산 (높을수록 좋음)
+const calculateRandomMatchScore = (
+  team1: [Player, Player],
+  team2: [Player, Player],
+  history: HistoryState,
+  partnerWeight: number = 0.5,
+  ntrpWeight: number = 0.3,
+  randomFactor: number = 0.2
+): number => {
+  const [p1, p2] = team1;
+  const [p3, p4] = team2;
+
+  // 1. 파트너 중복 페널티 (낮을수록 좋음 -> 점수로 변환)
+  const partnerDup1 = getPartnerDuplicateCount(history, p1.id, p2.id);
+  const partnerDup2 = getPartnerDuplicateCount(history, p3.id, p4.id);
+  const totalPartnerDup = partnerDup1 + partnerDup2;
+  const partnerScore = Math.max(0, 1000 - totalPartnerDup * 300);
+
+  // 2. NTRP 밸런스 점수
+  const ntrp1 = (p1.ntrp || 3.0) + (p2.ntrp || 3.0);
+  const ntrp2 = (p3.ntrp || 3.0) + (p4.ntrp || 3.0);
+  const ntrpDiff = Math.abs(ntrp1 - ntrp2);
+  const ntrpScore = Math.max(0, 1000 - ntrpDiff * 250);
+
+  // 3. 랜덤성 추가
+  const randomness = (Math.random() - 0.5) * 200 * randomFactor;
+
+  // 가중 합산
+  return partnerWeight * partnerScore + ntrpWeight * ntrpScore + randomness;
+};
+
+// 4명 조합에서 최적의 팀 구성 찾기
+const findBestTeamConfiguration = (
+  fourPlayers: Player[],
+  history: HistoryState
+): { team1: [Player, Player]; team2: [Player, Player]; score: number } => {
+  const p = fourPlayers;
+  const configurations = [
+    { team1: [p[0], p[1]] as [Player, Player], team2: [p[2], p[3]] as [Player, Player] },
+    { team1: [p[0], p[2]] as [Player, Player], team2: [p[1], p[3]] as [Player, Player] },
+    { team1: [p[0], p[3]] as [Player, Player], team2: [p[1], p[2]] as [Player, Player] }
+  ];
+
+  let bestConfig = configurations[0];
+  let bestScore = -Infinity;
+
+  for (const config of configurations) {
+    const score = calculateRandomMatchScore(config.team1, config.team2, history);
+    if (score > bestScore) {
+      bestScore = score;
+      bestConfig = config;
+    }
+  }
+
+  return { ...bestConfig, score: bestScore };
+};
+
+// 순수 랜덤 + 파트너 중복 방지
+const generateRandomWithPartnerAvoidance = (
+  players: Player[],
+  rounds: number,
+  courts: number
+): MatchGenerationResult => {
+  const history = initializeHistory(players);
+  const matches: Match[] = [];
+  const roundRests: RoundRest[] = [];
+
+  const matchesPerRound = Math.floor(players.length / 4);
+
+  for (let r = 0; r < rounds; r++) {
+    const currentRound = r + 1;
+
+    // 1. 대기자 선정
+    const restingPlayers = selectRestingPlayers(players, history);
+    const playingPlayers = players.filter(p => !restingPlayers.some(rp => rp.id === p.id));
+
+    roundRests.push({
+      round: currentRound,
+      restingPlayerIds: restingPlayers.map(p => p.id)
+    });
+
+    // 휴식 선수 카운트 업데이트
+    restingPlayers.forEach(p => {
+      history.restCounts[p.id]++;
+    });
+
+    // 2. Greedy 매칭 생성
+    const usedIds = new Set<string>();
+
+    for (let m = 0; m < matchesPerRound; m++) {
+      const available = playingPlayers.filter(p => !usedIds.has(p.id));
+
+      if (available.length < 4) break;
+
+      // 100회 샘플링으로 최적 조합 찾기
+      let bestMatch: { team1: [Player, Player]; team2: [Player, Player]; score: number } | null = null;
+      const maxAttempts = Math.min(100, available.length * (available.length - 1));
+
+      for (let i = 0; i < maxAttempts; i++) {
+        const shuffled = shuffleArray(available);
+        const fourPlayers = shuffled.slice(0, 4);
+        const config = findBestTeamConfiguration(fourPlayers, history);
+
+        if (!bestMatch || config.score > bestMatch.score) {
+          bestMatch = config;
+        }
+
+        // 완벽한 매칭 (파트너 중복 0)이면 조기 종료
+        if (config.score >= 1000) break;
+      }
+
+      if (!bestMatch) break;
+
+      // 매치 생성
+      matches.push({
+        id: `match-rand-${currentRound}-${m}`,
+        round: currentRound,
+        courtNumber: (m % courts) + 1,
+        team1: [bestMatch.team1[0].id, bestMatch.team1[1].id],
+        team2: [bestMatch.team2[0].id, bestMatch.team2[1].id],
+        score1: null,
+        score2: null
+      });
+
+      // 히스토리 업데이트
+      updateHistoryState(
+        history,
+        [bestMatch.team1[0].id, bestMatch.team1[1].id],
+        [bestMatch.team2[0].id, bestMatch.team2[1].id]
+      );
+
+      // 사용된 선수 표시
+      [bestMatch.team1[0], bestMatch.team1[1], bestMatch.team2[0], bestMatch.team2[1]]
+        .forEach(p => usedIds.add(p.id));
+    }
+  }
+
+  return { matches, roundRests };
+};
+
+// 혼합복식 + 랜덤 매칭
+const generateRandomMixedDoubles = (
+  players: Player[],
+  rounds: number,
+  courts: number
+): MatchGenerationResult => {
+  const history = initializeHistory(players);
+  const matches: Match[] = [];
+  const roundRests: RoundRest[] = [];
+
+  const men = players.filter(p => p.gender === 'M');
+  const women = players.filter(p => p.gender === 'F');
+
+  // 혼합복식은 남녀 각 2명씩 필요
+  const maxMixedMatches = Math.min(Math.floor(men.length / 2), Math.floor(women.length / 2));
+  const matchesPerRound = Math.min(maxMixedMatches, Math.floor(players.length / 4));
+
+  for (let r = 0; r < rounds; r++) {
+    const currentRound = r + 1;
+
+    // 경기 횟수 기반 정렬 + 랜덤
+    const sortedMen = shuffleArray([...men]).sort(
+      (a, b) => history.playCounts[a.id] - history.playCounts[b.id]
+    );
+    const sortedWomen = shuffleArray([...women]).sort(
+      (a, b) => history.playCounts[a.id] - history.playCounts[b.id]
+    );
+
+    const usedMenIds = new Set<string>();
+    const usedWomenIds = new Set<string>();
+    const roundMatchIds: string[] = [];
+
+    for (let m = 0; m < matchesPerRound; m++) {
+      const availMen = sortedMen.filter(p => !usedMenIds.has(p.id));
+      const availWomen = sortedWomen.filter(p => !usedWomenIds.has(p.id));
+
+      if (availMen.length < 2 || availWomen.length < 2) break;
+
+      // 최적의 혼복 조합 찾기
+      let bestConfig: { m1: Player; w1: Player; m2: Player; w2: Player; score: number } | null = null;
+
+      const menPairs: [Player, Player][] = [];
+      for (let i = 0; i < Math.min(availMen.length, 6); i++) {
+        for (let j = i + 1; j < Math.min(availMen.length, 6); j++) {
+          menPairs.push([availMen[i], availMen[j]]);
+        }
+      }
+
+      const womenPairs: [Player, Player][] = [];
+      for (let i = 0; i < Math.min(availWomen.length, 6); i++) {
+        for (let j = i + 1; j < Math.min(availWomen.length, 6); j++) {
+          womenPairs.push([availWomen[i], availWomen[j]]);
+        }
+      }
+
+      for (const [m1, m2] of menPairs) {
+        for (const [w1, w2] of womenPairs) {
+          // (m1, w1) vs (m2, w2) 또는 (m1, w2) vs (m2, w1)
+          const formations = [
+            { m1, w1, m2, w2, team1: [m1, w1] as [Player, Player], team2: [m2, w2] as [Player, Player] },
+            { m1, w1: w2, m2, w2: w1, team1: [m1, w2] as [Player, Player], team2: [m2, w1] as [Player, Player] }
+          ];
+
+          for (const f of formations) {
+            const score = calculateRandomMatchScore(f.team1, f.team2, history);
+            if (!bestConfig || score > bestConfig.score) {
+              bestConfig = { m1: f.m1, w1: f.w1, m2: f.m2, w2: f.w2, score };
+            }
+          }
+        }
+      }
+
+      if (!bestConfig) break;
+
+      matches.push({
+        id: `match-randmx-${currentRound}-${m}`,
+        round: currentRound,
+        courtNumber: (m % courts) + 1,
+        team1: [bestConfig.m1.id, bestConfig.w1.id],
+        team2: [bestConfig.m2.id, bestConfig.w2.id],
+        score1: null,
+        score2: null
+      });
+
+      updateHistoryState(
+        history,
+        [bestConfig.m1.id, bestConfig.w1.id],
+        [bestConfig.m2.id, bestConfig.w2.id]
+      );
+
+      usedMenIds.add(bestConfig.m1.id);
+      usedMenIds.add(bestConfig.m2.id);
+      usedWomenIds.add(bestConfig.w1.id);
+      usedWomenIds.add(bestConfig.w2.id);
+
+      roundMatchIds.push(bestConfig.m1.id, bestConfig.m2.id, bestConfig.w1.id, bestConfig.w2.id);
+    }
+
+    // 휴식 선수
+    const restingPlayerIds = players
+      .filter(p => !roundMatchIds.includes(p.id))
+      .map(p => p.id);
+
+    roundRests.push({ round: currentRound, restingPlayerIds });
+
+    restingPlayerIds.forEach(id => {
+      history.restCounts[id]++;
+    });
+  }
+
+  return { matches, roundRests };
+};
+
+// 성별 모드 + 랜덤 매칭 (남복/여복/혼복)
+const generateRandomWithGenderMode = (
+  players: Player[],
+  rounds: number,
+  courts: number
+): MatchGenerationResult => {
+  const history = initializeHistory(players);
+  const matches: Match[] = [];
+  const roundRests: RoundRest[] = [];
+
+  const men = players.filter(p => p.gender === 'M');
+  const women = players.filter(p => p.gender === 'F');
+
+  const matchTypeCounts: Record<'MD' | 'WD' | 'XD', number> = { MD: 0, WD: 0, XD: 0 };
+
+  for (let r = 0; r < rounds; r++) {
+    const currentRound = r + 1;
+    const usedPlayerIds = new Set<string>();
+
+    // 경기 횟수 기반 정렬
+    const sortedMen = shuffleArray([...men]).sort(
+      (a, b) => history.playCounts[a.id] - history.playCounts[b.id]
+    );
+    const sortedWomen = shuffleArray([...women]).sort(
+      (a, b) => history.playCounts[a.id] - history.playCounts[b.id]
+    );
+
+    const maxMatchesPerRound = Math.floor(players.length / 4);
+    let matchCount = 0;
+
+    while (matchCount < maxMatchesPerRound) {
+      const availMen = sortedMen.filter(p => !usedPlayerIds.has(p.id));
+      const availWomen = sortedWomen.filter(p => !usedPlayerIds.has(p.id));
+
+      // 가능한 매치 타입 확인
+      const options: ('MD' | 'WD' | 'XD')[] = [];
+      if (availMen.length >= 4) options.push('MD');
+      if (availWomen.length >= 4) options.push('WD');
+      if (availMen.length >= 2 && availWomen.length >= 2) options.push('XD');
+
+      if (options.length === 0) break;
+
+      // 가장 적게 사용된 타입 선택
+      const sortedOptions = [...options].sort((a, b) => matchTypeCounts[a] - matchTypeCounts[b]);
+      const selectedType = sortedOptions[0];
+
+      let bestMatch: { team1: [Player, Player]; team2: [Player, Player] } | null = null;
+      let bestScore = -Infinity;
+
+      if (selectedType === 'MD') {
+        // 남복
+        for (let attempt = 0; attempt < 50; attempt++) {
+          const shuffled = shuffleArray(availMen);
+          const fourMen = shuffled.slice(0, 4);
+          const config = findBestTeamConfiguration(fourMen, history);
+          if (config.score > bestScore) {
+            bestScore = config.score;
+            bestMatch = { team1: config.team1, team2: config.team2 };
+          }
+          if (bestScore >= 1000) break;
+        }
+      } else if (selectedType === 'WD') {
+        // 여복
+        for (let attempt = 0; attempt < 50; attempt++) {
+          const shuffled = shuffleArray(availWomen);
+          const fourWomen = shuffled.slice(0, 4);
+          const config = findBestTeamConfiguration(fourWomen, history);
+          if (config.score > bestScore) {
+            bestScore = config.score;
+            bestMatch = { team1: config.team1, team2: config.team2 };
+          }
+          if (bestScore >= 1000) break;
+        }
+      } else {
+        // 혼복
+        for (let attempt = 0; attempt < 50; attempt++) {
+          const shuffledMen = shuffleArray(availMen);
+          const shuffledWomen = shuffleArray(availWomen);
+          const [m1, m2] = shuffledMen.slice(0, 2);
+          const [w1, w2] = shuffledWomen.slice(0, 2);
+
+          // 두 가지 팀 구성 비교
+          const score1 = calculateRandomMatchScore([m1, w1], [m2, w2], history);
+          const score2 = calculateRandomMatchScore([m1, w2], [m2, w1], history);
+
+          if (score1 > bestScore) {
+            bestScore = score1;
+            bestMatch = { team1: [m1, w1], team2: [m2, w2] };
+          }
+          if (score2 > bestScore) {
+            bestScore = score2;
+            bestMatch = { team1: [m1, w2], team2: [m2, w1] };
+          }
+          if (bestScore >= 1000) break;
+        }
+      }
+
+      if (!bestMatch) break;
+
+      matches.push({
+        id: `match-randgm-${currentRound}-${matchCount}`,
+        round: currentRound,
+        courtNumber: (matchCount % courts) + 1,
+        team1: [bestMatch.team1[0].id, bestMatch.team1[1].id],
+        team2: [bestMatch.team2[0].id, bestMatch.team2[1].id],
+        score1: null,
+        score2: null
+      });
+
+      updateHistoryState(
+        history,
+        [bestMatch.team1[0].id, bestMatch.team1[1].id],
+        [bestMatch.team2[0].id, bestMatch.team2[1].id]
+      );
+
+      [bestMatch.team1[0], bestMatch.team1[1], bestMatch.team2[0], bestMatch.team2[1]]
+        .forEach(p => usedPlayerIds.add(p.id));
+
+      matchTypeCounts[selectedType]++;
+      matchCount++;
+    }
+
+    // 휴식 선수
+    const restingPlayerIds = players
+      .filter(p => !usedPlayerIds.has(p.id))
+      .map(p => p.id);
+
+    roundRests.push({ round: currentRound, restingPlayerIds });
+
+    restingPlayerIds.forEach(id => {
+      history.restCounts[id]++;
+    });
+  }
+
+  return { matches, roundRests };
 };

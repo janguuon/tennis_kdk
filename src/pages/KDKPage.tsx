@@ -24,7 +24,10 @@ export function KDKPage() {
     mixedDoubles,
     setMixedDoubles,
     strictGenderMode,
-    setStrictGenderMode
+    setStrictGenderMode,
+    useRandomWithAvoidance,
+    setUseRandomWithAvoidance,
+    roundRests
   } = useTournament();
 
   const hasMatches = matches.length > 0;
@@ -141,7 +144,7 @@ export function KDKPage() {
                 </label>
               </div>
 
-              <div className="mb-6 flex items-center">
+              <div className="mb-2 flex items-center">
                 <input
                   type="checkbox"
                   id="strictGenderMode"
@@ -154,7 +157,26 @@ export function KDKPage() {
                   성별 매칭 모드 (남복/여복/혼복만 허용)
                 </label>
               </div>
-              
+
+              <div className="mb-6 flex items-center">
+                <input
+                  type="checkbox"
+                  id="randomWithAvoidance"
+                  checked={useRandomWithAvoidance}
+                  onChange={(e) => setUseRandomWithAvoidance(e.target.checked)}
+                  disabled={hasMatches}
+                  className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded disabled:opacity-50"
+                />
+                <label htmlFor="randomWithAvoidance" className={`ml-2 block text-sm font-medium ${hasMatches ? 'text-gray-400' : 'text-gray-700'}`}>
+                  중복 파트너 방지형 랜덤 매칭
+                </label>
+              </div>
+              {useRandomWithAvoidance && !hasMatches && (
+                <p className="text-xs text-green-600 mb-4 mt-[-10px]">
+                  * 파트너 중복을 최소화하는 랜덤 매칭이 적용됩니다
+                </p>
+              )}
+
               <button
                 onClick={generateMatches}
                 disabled={activePlayerCount < 4 || hasMatches}
@@ -180,10 +202,33 @@ export function KDKPage() {
             {hasMatches ? (
               <>
                 <Standings stats={stats} players={players} />
-                <MatchList 
-                  matches={matches} 
-                  players={players} 
-                  onUpdateScore={updateScore} 
+
+                {/* 휴식 선수 표시 */}
+                {roundRests.length > 0 && roundRests.some(rr => rr.restingPlayerIds.length > 0) && (
+                  <div className="bg-yellow-50 rounded-lg shadow-md p-4 border border-yellow-200">
+                    <h3 className="text-sm font-bold text-yellow-800 mb-2">라운드별 휴식 선수</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {roundRests.map(rr => (
+                        <div key={rr.round} className="text-sm">
+                          <span className="font-medium text-yellow-700">R{rr.round}: </span>
+                          <span className="text-yellow-600">
+                            {rr.restingPlayerIds.length > 0
+                              ? rr.restingPlayerIds.map(id =>
+                                  players.find(p => p.id === id)?.name
+                                ).join(', ')
+                              : '전원 참여'
+                            }
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <MatchList
+                  matches={matches}
+                  players={players}
+                  onUpdateScore={updateScore}
                 />
               </>
             ) : (

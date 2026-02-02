@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Player, Match, PlayerStats } from '../types';
+import { Player, Match, PlayerStats, RoundRest } from '../types';
 import { generateKDKMatches } from '../utils/kdkLogic';
 
 const STORAGE_KEY = 'tennis_kdk_data_v1';
@@ -11,6 +11,8 @@ interface TournamentState {
   rounds: number;
   mixedDoubles: boolean;
   strictGenderMode: boolean;
+  useRandomWithAvoidance: boolean;
+  roundRests: RoundRest[];
 }
 
 const DEFAULT_STATE: TournamentState = {
@@ -19,7 +21,9 @@ const DEFAULT_STATE: TournamentState = {
   courts: 1,
   rounds: 4,
   mixedDoubles: false,
-  strictGenderMode: false
+  strictGenderMode: false,
+  useRandomWithAvoidance: false,
+  roundRests: []
 };
 
 export const useTournament = () => {
@@ -34,7 +38,9 @@ export const useTournament = () => {
           rounds: parsed.rounds || 4,
           courts: parsed.courts || 1,
           mixedDoubles: parsed.mixedDoubles || false,
-          strictGenderMode: parsed.strictGenderMode || false
+          strictGenderMode: parsed.strictGenderMode || false,
+          useRandomWithAvoidance: parsed.useRandomWithAvoidance || false,
+          roundRests: parsed.roundRests || []
         };
       } catch (e) {
         console.error('localStorage 파싱 오류:', e);
@@ -99,9 +105,24 @@ export const useTournament = () => {
     setState(prev => ({ ...prev, strictGenderMode }));
   };
 
+  const setUseRandomWithAvoidance = (useRandomWithAvoidance: boolean) => {
+    setState(prev => ({ ...prev, useRandomWithAvoidance }));
+  };
+
   const generateMatches = () => {
-    const newMatches = generateKDKMatches(state.players, state.courts, state.rounds, state.mixedDoubles, state.strictGenderMode);
-    setState(prev => ({ ...prev, matches: newMatches }));
+    const result = generateKDKMatches(
+      state.players,
+      state.courts,
+      state.rounds,
+      state.mixedDoubles,
+      state.strictGenderMode,
+      state.useRandomWithAvoidance
+    );
+    setState(prev => ({
+      ...prev,
+      matches: result.matches,
+      roundRests: result.roundRests
+    }));
   };
 
   const updateScore = (matchId: string, score1: number, score2: number) => {
@@ -115,7 +136,7 @@ export const useTournament = () => {
 
   const resetTournament = () => {
     if (confirm('대회를 초기화 하시겠습니까? 모든 대진표와 점수가 삭제됩니다.')) {
-        setState(prev => ({ ...prev, matches: [] }));
+        setState(prev => ({ ...prev, matches: [], roundRests: [] }));
     }
   };
 
@@ -127,7 +148,9 @@ export const useTournament = () => {
             courts: 1,
             rounds: 4,
             mixedDoubles: false,
-            strictGenderMode: false
+            strictGenderMode: false,
+            useRandomWithAvoidance: false,
+            roundRests: []
         });
       }
   }
@@ -199,6 +222,9 @@ export const useTournament = () => {
     mixedDoubles: state.mixedDoubles,
     setMixedDoubles,
     strictGenderMode: state.strictGenderMode,
-    setStrictGenderMode
+    setStrictGenderMode,
+    useRandomWithAvoidance: state.useRandomWithAvoidance,
+    setUseRandomWithAvoidance,
+    roundRests: state.roundRests
   };
 };
